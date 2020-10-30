@@ -5,48 +5,37 @@ use crate::util::event::{Config, Event, Events};
 use std::{error::Error, io, time::Duration};
 use tui::Terminal;
 use tui::backend::TermionBackend;
+use tui::widgets::{Block, Borders, Clear};
 use termion::raw::IntoRawMode;
 use termion::event::Key;
+use argh::FromArgs;
 
-
-use tui::widgets::{canvas::Canvas, Block, Borders, Clear};
-use tui::layout::{Layout, Constraint, Direction};
-
-use tui::style::{Color, Style};
-
-use itertools::Itertools;
-
-use hashlife::Cell;
-
-// use crate::util::event::{Config, Event, Events};
-// use std::{error::Error, io, time::Duration};
-// use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
-// use tui::{
-//     backend::TermionBackend,
-//     layout::{Constraint, Direction, Layout, Rect},
-//     style::Color,
-//     widgets::{
-//         canvas::{Canvas, Map, MapResolution, Rectangle},
-//         Block, Borders,
-//     },
-//     Terminal,
-// };
-
-use hashlife::HashLife;
+use hashlife::linear::{Cell, LinearLife};
+use hashlife::{EdgeRule, GameOfLife};
 
 const BLOCK_HALF_UPPER: &'static str = "▀";
 const BLOCK_HALF_LOWER: &'static str = "▄";
 const BLOCK_FULL: &'static str = "█";
 
+/// Hashlife demo
+#[derive(Debug, FromArgs)]
+struct Cli {
+    /// time in ms between two ticks.
+    #[argh(option, default = "250")]
+    tick_rate: u64,
+}
+
 
 fn main() -> Result<(), Box<dyn Error>> {
+    print!("{}", termion::clear::All);
+    let cli: Cli = argh::from_env();
     let stdout = io::stdout().into_raw_mode()?;
     let backend = TermionBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
     // Setup event handlers
     let config = Config {
-        tick_rate: Duration::from_millis(250),
+        tick_rate: Duration::from_millis(cli.tick_rate),
         ..Default::default()
     };
     let events = Events::with_config(config);
@@ -68,11 +57,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             let viewport_height = grid_size.height;
 
             if let None = hashlife {
-                hashlife = Some(HashLife::new(viewport_width as usize, (viewport_height * 2) as usize));
+                let width = viewport_width as usize;
+                let height = (viewport_height * 2) as usize;
+                let edge_rules = EdgeRule::Wrap(width, height);
+                hashlife = Some(LinearLife::new(edge_rules));
             }
-            let mut hashlife = hashlife.as_mut().unwrap();
+            let hashlife = hashlife.as_mut().unwrap();
 
-            let title = format!(" Hashlife ({}x{}), Generation: {}",
+            let title = format!(" Hashlife ({}x{}), Generation: {} ",
                 hashlife.width(),
                 hashlife.height(),
                 hashlife.get_generation()
@@ -111,10 +103,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                     let mut area = grid_size.clone();
                     area.y += i as u16;
                     area.height = 2;
-                    // let x = grid_size.x;
-                    // let y = grid_size.y + i as u16;
-                    // let area = tui::layout::Rect::new(x, y, grid_size.width, 1);
-                    // println!("{:?}", area);
                     f.render_widget(line, area);
                 })
             ;

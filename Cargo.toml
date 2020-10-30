@@ -13,6 +13,7 @@ getrandom = "0.2"
 tui = "0.12"
 termion = "1.5"
 itertools="0.9"
+argh = "0.1"
 
 [[example]]
 name = "demo"
