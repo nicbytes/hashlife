@@ -1,4 +1,5 @@
 pub mod linear;
+pub mod hashlife;
 
 pub enum EdgeRule {
     Wrap (usize, usize), // width, height
