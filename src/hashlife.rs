@@ -187,6 +187,10 @@ impl QuadNode {
             }
         }
     }
+
+    fn next_generation(&self) {
+        
+    }
 }
 
 
@@ -211,6 +215,13 @@ impl HashLife {
     pub fn top(&self) -> QuadNode {
         self.top.clone()
     }
+
+    // fn expandUniverse(&mut self) {
+    //     if let QuadNode::Tree(tree) = self.top {
+    //         let border = Tree::empty_tree(tree.level)
+    //     }
+        
+    // }
 }
 
 impl GameOfLife for HashLife {

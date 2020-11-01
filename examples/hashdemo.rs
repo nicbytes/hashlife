@@ -94,8 +94,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                 .into_iter()
                 .map(|(x, y)| gol.top().get_cell(x, y))
                 .collect::<Vec<_>>();
-            
-                // println!("len {:?}", cells.len());
             cells.into_iter()
             .chunks(viewport_width as usize * 2)
             .into_iter()
