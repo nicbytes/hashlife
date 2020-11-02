@@ -54,7 +54,6 @@ impl Hash for Tree {
 
 impl Tree {
 
-
     fn ne(&self) -> Rc<QuadNode> {
         Rc::clone(&self.ne)
     }
@@ -307,8 +306,15 @@ impl HashLife {
     }
 
     fn next_generation(&mut self, node: Rc<QuadNode>) -> Rc<QuadNode> {
+        let mut state = DefaultHasher::new();
+        node.hash(&mut state);
+        let hash = state.finish();
+        if let Some(ref_to_node) = self.cache.generation.get(&hash) {
+            return Rc::clone(ref_to_node);
+        }
+
         let tree = node.force_tree();
-        if tree.population == 0 {
+        let next = if tree.population == 0 {
             tree.nw()
         } else if tree.level == 2 {
             self.life4x4(node)
@@ -351,7 +357,10 @@ impl HashLife {
             let sw = self.join(c5.sw(), c4.se(), c8.nw(), c7.ne());
             let se = self.join(c6.sw(), c5.se(), c9.nw(), c8.ne());
             self.join(ne, nw, se, sw)
-        }
+        };
+
+        self.cache.generation.insert(hash, Rc::clone(&next));
+        next
     }
 }
 
@@ -359,6 +368,7 @@ struct Cache {
     join: HashMap<u64, Rc<QuadNode>>,
     empty: HashMap<usize, Rc<QuadNode>>,
     nodes: HashMap<u64, Rc<QuadNode>>,
+    generation: HashMap<u64, Rc<QuadNode>>,
 }
 
 impl Cache {
@@ -367,6 +377,7 @@ impl Cache {
             join: HashMap::new(),
             empty: HashMap::new(),
             nodes: HashMap::new(),
+            generation: HashMap::new(),
         }
     }
 
@@ -424,6 +435,17 @@ impl HashLife {
     //     }
         
     // }
+
+    fn quad_to_list(node: Rc<QuadNode>, width: usize, height: usize) -> Vec<Vec<Cell>> {
+        let mut list = Vec::new();
+        match node.as_ref() {
+            QuadNode::Cell(cell) => vec![ vec![ *cell ] ],
+            QuadNode::Tree(tree) => {
+                
+            },
+        }
+        
+    }
 }
 
 impl GameOfLife for HashLife {
