@@ -42,6 +42,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let events = Events::with_config(config);
 
     let mut gol = None;
+    let mut focus = (0,0);
 
     loop {
         terminal.draw(|f| {
@@ -63,9 +64,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
             let gol = gol.as_mut().unwrap();
 
-            let title = format!(" Game of Life ({}x{}), Generation: {} ",
+            let title = format!(" Game of Life ({}x{}) @ {:?}, Generation: {} ",
                 gol.width(),
                 gol.height(),
+                focus,
                 gol.get_generation()
             );
             let container = container.title(title);
@@ -73,61 +75,65 @@ fn main() -> Result<(), Box<dyn Error>> {
             f.render_widget(Clear, window_size);
             f.render_widget(container, window_size);
 
-            let x_half = gol.width() as isize / 2;
-            let y_half = gol.height() as isize / 2;
-            let x_lower = 0 - x_half;
-            let y_lower = 0 - y_half;
-            let x_upper = 0 + x_half;
-            let y_upper = 0 + y_half;
-            let xs = x_lower..x_upper;
-            let ys = y_lower..y_upper;
-            let positions = ys
-                .clone()
-                .map(|y| xs
-                    .clone()
-                    .zip(std::iter::repeat(y))
-                    .collect::<Vec<_>>()
-                )
-                .flatten()
-                .collect::<Vec<_>>();
-            let cells = positions
-                .into_iter()
-                .map(|(x, y)| gol.top().get_cell(x, y))
-                .collect::<Vec<_>>();
-            cells.into_iter()
-            .chunks(viewport_width as usize * 2)
-            .into_iter()
-            .map(|it| {
-                let cells: Vec<Cell> = it.collect();
-                let top = &cells[..(viewport_width as usize)];
-                let bottom = &cells[(viewport_width as usize)..];
-                top.into_iter().zip(bottom.into_iter())
-                        .map(|(t,b )| {
-                            match (t, b) {
-                                (Cell::Alive, Cell::Alive) => BLOCK_FULL,
-                                (Cell::Alive, Cell::Dead)  => BLOCK_HALF_UPPER,
-                                (Cell::Dead, Cell::Alive) => BLOCK_HALF_LOWER,
-                                (Cell::Dead, Cell::Dead) => " ",
-                            }
-                        })
-                    .collect::<String>()
-            })
-                .enumerate()
-                .for_each(|(i, s)| {
-                    let line = Block::default().borders(Borders::NONE).title(s);
-                    let mut area = grid_size.clone();
-                    area.y += i as u16;
-                    area.height = 2;
-                    f.render_widget(line, area);
-                })
-            ;
+            // let x_half = gol.width() as isize / 2;
+            // let y_half = gol.height() as isize / 2;
+            // let x_lower = 0 - x_half;
+            // let y_lower = 0 - y_half;
+            // let x_upper = 0 + x_half;
+            // let y_upper = 0 + y_half;
+            // let xs = x_lower..x_upper;
+            // let ys = y_lower..y_upper;
+            // let positions = ys
+            //     .clone()
+            //     .map(|y| xs
+            //         .clone()
+            //         .zip(std::iter::repeat(y))
+            //         .collect::<Vec<_>>()
+            //     )
+            //     .flatten()
+            //     .collect::<Vec<_>>();
+            // let cells = positions
+            //     .into_iter()
+            //     .map(|(x, y)| gol.top().get_cell(x, y))
+            //     .collect::<Vec<_>>();
+            // cells.into_iter()
+            // .chunks(viewport_width as usize * 2)
+            // .into_iter()
+            // .map(|it| {
+            //     let cells: Vec<Cell> = it.collect();
+            //     let top = &cells[..(viewport_width as usize)];
+            //     let bottom = &cells[(viewport_width as usize)..];
+            //     top.into_iter().zip(bottom.into_iter())
+            //             .map(|(t,b )| {
+            //                 match (t, b) {
+            //                     (Cell::Alive, Cell::Alive) => BLOCK_FULL,
+            //                     (Cell::Alive, Cell::Dead)  => BLOCK_HALF_UPPER,
+            //                     (Cell::Dead, Cell::Alive) => BLOCK_HALF_LOWER,
+            //                     (Cell::Dead, Cell::Dead) => " ",
+            //                 }
+            //             })
+            //         .collect::<String>()
+            // })
+            //     .enumerate()
+            //     .for_each(|(i, s)| {
+            //         let line = Block::default().borders(Borders::NONE).title(s);
+            //         let mut area = grid_size.clone();
+            //         area.y += i as u16;
+            //         area.height = 2;
+            //         f.render_widget(line, area);
+            //     })
+            // ;
         }).expect("failed to draw terminal");
         
         match events.next()? {
             Event::Input(input) => match input {
                 Key::Char('q') => {
                     break;
-                }
+                },
+                Key::Up => focus.1 += 1,
+                Key::Down => focus.1 -= 1,
+                Key::Left => focus.0 -= 1,
+                Key::Right => focus.0 += 1,
                 _ => {}
             },
             Event::Tick => {

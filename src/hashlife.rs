@@ -40,15 +40,12 @@ pub struct Tree {
     sw: Rc<QuadNode>,
     level: usize,
     population: usize,
+    hash: u64,
 }
 
 impl Hash for Tree {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.ne.hash(state);
-        self.nw.hash(state);
-        self.se.hash(state);
-        self.sw.hash(state);
-        self.level.hash(state);
+        state.write_u64(self.hash);
     }
 }
 
@@ -141,11 +138,20 @@ impl QuadNode {
         }
     }
 
-    fn force_tree(&self) -> &Tree {
+    pub fn force_tree(&self) -> &Tree {
         match self {
             QuadNode::Tree(tree) => tree,
             _ => panic!("forced to Tree but not a tree")
         }
+    }
+
+    fn pre_compute_hash(ne: &Rc<QuadNode>, nw: &Rc<QuadNode>, se: &Rc<QuadNode>, sw: &Rc<QuadNode>) -> u64 {
+        let mut state = DefaultHasher::new();
+        ne.hash(&mut state);
+        nw.hash(&mut state);
+        se.hash(&mut state);
+        sw.hash(&mut state);
+        state.finish()
     }
 
 
@@ -176,8 +182,11 @@ impl QuadNode {
         let nw = Rc::clone(&nw);
         let se = Rc::clone(&se);
         let sw= Rc::clone(&sw);
+
+        let hash = QuadNode::pre_compute_hash(&ne, &nw, &se, &sw);
+
         QuadNode::Tree(Tree {
-            ne, nw, se, sw, level, population
+            ne, nw, se, sw, level, population, hash,
         })
     }
 }
@@ -216,6 +225,8 @@ impl HashLife {
 
         let sub_empty = self.empty_tree(level - 1);
 
+        let hash = QuadNode::pre_compute_hash(&sub_empty, &sub_empty, &sub_empty, &sub_empty);
+
         let tree = Tree {
             ne: Rc::clone(&sub_empty),
             nw: Rc::clone(&sub_empty),
@@ -223,6 +234,7 @@ impl HashLife {
             sw: sub_empty,
             level,
             population: 0,
+            hash,
         };
 
         let node = Rc::new(QuadNode::Tree(tree));
@@ -233,7 +245,7 @@ impl HashLife {
     /// Generates a quad tree with `level` levels of random cells. Similar sub
     /// trees at the same level refer to the same memory.
     /// Not efficient.
-    fn random_tree(&mut self, level: usize) -> Rc<QuadNode> {
+    pub fn random_tree(&mut self, level: usize) -> Rc<QuadNode> {
         // Base case.
         if level == 0 {
             let mut buf = [0u8; 1];
@@ -305,7 +317,7 @@ impl HashLife {
         self.join(ne, nw, se, sw)
     }
 
-    fn next_generation(&mut self, node: Rc<QuadNode>) -> Rc<QuadNode> {
+    pub fn next_generation(&mut self, node: Rc<QuadNode>) -> Rc<QuadNode> {
         let mut state = DefaultHasher::new();
         node.hash(&mut state);
         let hash = state.finish();
@@ -436,16 +448,31 @@ impl HashLife {
         
     // }
 
-    fn quad_to_list(node: Rc<QuadNode>, width: usize, height: usize) -> Vec<Vec<Cell>> {
-        let mut list = Vec::new();
-        match node.as_ref() {
-            QuadNode::Cell(cell) => vec![ vec![ *cell ] ],
-            QuadNode::Tree(tree) => {
+    // fn extract_points(node: Rc<QuadNode>, points: &mut HashMap<(isize, isize), Cell>, x: isize, y: isize) {
+    //     match node.as_ref() {
+    //         QuadNode::Cell(cell) => points.insert((x,y), *cell),
+    //         QuadNode::Tree(tree) => {
                 
-            },
-        }
-        
-    }
+    //         },
+    //     }
+    // }
+
+    // fn quad_to_list(node: Rc<QuadNode>, width: usize, height: usize) -> Vec<Vec<Cell>> {
+    //     let mut points = HashMap::new();
+    //     let extract_points = |n| {
+    //         extract
+
+    //     };
+    //     extract_points(node);
+    //     let mut list = Vec::new();
+
+    //     match node.as_ref() {
+    //         QuadNode::Cell(cell) => vec![ vec![ *cell ] ],
+    //         QuadNode::Tree(tree) => {
+    //             let top_left = HashLife::quad_to_list(tree.nw(), width>>1, height>>1);
+    //         },
+    //     }
+    // }
 }
 
 impl GameOfLife for HashLife {
@@ -465,6 +492,7 @@ impl GameOfLife for HashLife {
             },
             EdgeRule::Truncate(width, height) => todo!(),
             EdgeRule::Infinite => todo!(),
+            EdgeRule::InfiniteWithRandom(size) => todo!(),
 
         }
 
@@ -525,6 +553,18 @@ mod tests {
         hl.empty_tree(2);
         assert_eq!(3, hl.cache.nodes.len());
         assert_eq!(3, hl.cache.empty.len());
+    }
+
+    #[test]
+    fn cache_random_level_0() {
+        let mut hl = HashLife::new(EdgeRule::Wrap(2,2));
+        let node = hl.random_tree(0);
+        let cell = match node.as_ref() {
+            QuadNode::Cell(cell) => *cell,
+            QuadNode::Tree(_) => panic!("test fail, level 0 should be a cell."),
+        };
+
+        assert!(cell == Cell::Dead || cell == Cell::Alive);
     }
 }
 

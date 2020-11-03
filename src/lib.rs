@@ -1,10 +1,12 @@
 pub mod linear;
 pub mod hashlife;
+pub mod cell;
 
 pub enum EdgeRule {
     Wrap (usize, usize), // width, height
     Truncate(usize, usize),  // width, height
-    Infinite
+    Infinite,
+    InfiniteWithRandom(usize), // size
 }
 
 /// The Game of Life trait specifies

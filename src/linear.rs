@@ -26,7 +26,7 @@ impl GameOfLife for LinearLife {
         let (width,  height, edge_rule) = match edge {
             EdgeRule::Wrap(w, h) => (w, h, LinearEdgeRule::Wrap),
             EdgeRule::Truncate(w, h) => (w, h, LinearEdgeRule::Truncate),
-            EdgeRule::Infinite => panic!("Cannot use infinite on linear life."),
+            _ => panic!("Cannot use infinite on linear life."),
         };
         let mut randoms = vec![0u8; (width * height) as usize];
         getrandom(&mut randoms[..]).expect("random num generation failed.");
