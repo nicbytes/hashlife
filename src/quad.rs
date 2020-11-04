@@ -8,10 +8,18 @@ pub enum Quadrant {
     TOP,
 }
 
+
+use crate::ReferenceCounter;
+
+
+pub type RcQuad = ReferenceCounter<Quad>;
+
 // enum QuadNode {
 //     Calculatable(Rc<Quad>),
     
 // }
+
+pub struct Quad {}
 
 // struct Quad {
 //     position: Quadrant,
