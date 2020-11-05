@@ -79,6 +79,20 @@ mod tests {
     }
 
     #[test]
+    fn is_alive() {
+        let a = Automata::Alive;
+        assert_eq!(a.is_alive(), true);
+        assert_eq!(a.is_dead(), false);
+    }
+
+    #[test]
+    fn is_dead() {
+        let a = Automata::Dead;
+        assert_eq!(a.is_dead(), true);
+        assert_eq!(a.is_alive(), false);
+    }
+
+    #[test]
     /// Ensure the Rc returns the same hash as Automata.
     fn cell_rcs_hashed() {
         let c1 = Rc::new(Automata::Alive);
