@@ -6,6 +6,13 @@ pub enum Automata {
 }
 
 impl Automata {
+    pub fn from(number: usize) -> Self {
+        if number % 2 == 0 {
+            Self::Dead
+        } else {
+            Self::Alive
+        }
+    }
     pub fn is_dead(&self) -> bool {
         match self {
             Automata::Dead => true,
