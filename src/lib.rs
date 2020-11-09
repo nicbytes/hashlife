@@ -98,10 +98,36 @@ struct ConstructionParameters<'a> {
     vector: &'a Vec<u8>,
     width: usize,
     height: usize,
-    min_width: isize,
-    max_width: isize,
-    min_height: isize,
-    max_height: isize,
+    bound: BoundingBox,
+}
+
+struct BoundingBox {
+    top: isize,
+    bottom: isize,
+    left: isize,
+    right: isize,
+}
+
+impl BoundingBox {
+    fn new(x: isize, y: isize, level: usize, max_level: usize) -> Self{
+        let level_delta = max_level - level;
+        let pow2ld = 2isize.pow(level_delta as u32);
+        let top = y * pow2ld;
+        let bottom = y * pow2ld + pow2ld - 1;
+        let left = x * pow2ld;
+        let right = x * pow2ld + pow2ld - 1;
+
+        Self { top, bottom, left, right }
+    }
+
+    fn from(top: isize, bottom: isize, left: isize, right: isize) -> Self {
+        Self { top, bottom, left, right }
+    }
+
+    fn collides(&self, other: &BoundingBox) -> bool {
+        !(other.top < self.bottom || other.bottom > self.top || other.left > self.right || other.right < self.left)
+    }
+
 }
 
 impl Hashlife {
@@ -249,32 +275,30 @@ impl Hashlife {
     /// Construct a Hashlife program given an array of states.
     pub fn from_array(size: usize, array: Vec<u8>, width: usize, height: usize) -> Self {
         //
-        let hashlife = Hashlife::new();
+        let mut hashlife = Hashlife::new();
 
         // Calculat
         let min_width = -(width as isize / 2);
         let max_width = width as isize - min_width;
         let min_height = -(height as isize / 2);
         let max_height = height as isize - min_height;
+        let bound = BoundingBox::from(min_height, max_height, min_width, max_width);
         // Pack some configuration parameters to build the first generation.
         let params = ConstructionParameters {
             level: size,
             vector: &array,
             width,
             height,
-            min_width,
-            max_width,
-            min_height,
-            max_height,
+            bound,
         };
 
         let top = hashlife.construct(0, 0, size, &params);
-
+        hashlife.top = Some(top);
         hashlife
     }
 
     /// Recursively build a Quad tree.
-    fn construct(&self, x: isize, y: isize, level: usize, params: &ConstructionParameters) -> Rc<Node> {
+    fn construct(&mut self, x: isize, y: isize, level: usize, params: &ConstructionParameters) -> Rc<Node> {
         // Base case: retrieve value from cell
         if level == 0 {
             let xx = ((params.width / 2) as isize + x) as usize;
@@ -284,9 +308,22 @@ impl Hashlife {
             return self.make_automata(a);
         }
 
-        let size = level.pow(level as u32);
+        // Small helper function, speed up construction if building an empty region.
+        let mut assemble = |dx, dy| {
+            let bound = BoundingBox::new(x, y, level,  params.level);
+            if bound.collides(&params.bound) {
+                self.construct(x * 2 + dx, y * 2 + dy, level - 1, &params)
+            } else {
+                self.empty(level)
+            }
+        };
 
-        ()
+        let nw = assemble(0, 0);
+        let ne = assemble(1, 0);
+        let sw = assemble(0, 1);
+        let se = assemble(1, 1);
+
+        self.join(nw, ne, sw, se)
     }
 
     /// Construct an empty Quad Node at the specified level.
@@ -319,6 +356,68 @@ impl Hashlife {
         empty
     }
 
+    fn get_node_with(&self, x: isize, y: isize, positions: &Vec<(isize, isize)>, node: Rc<Node>) -> Automata {
+        if node.level == 0 {
+            return node.as_automata();
+        }
+        let position = positions[node.level - 2];
+        println!("Position: {:?}, level: {},  NW {:?}, NE {:?}, SW {:?}, SE {:?}",
+            position, node.level,
+            (x*2, y*2),(x*2+1, y*2),(x*2, y*2+1),(x*2+1, y*2+1)
+        );
+        let nw = (x*2, y*2);
+        let ne = (x*2+1, y*2);
+        let sw = (x*2, y*2+1);
+        let se = (x*2+1, y*2+1);
+        let children = node.get_children();
+        if position == nw {
+            return self.get_node_with(nw.0, nw.1, positions, Rc::clone(&children.nw));
+        } else if position == ne {
+            return self.get_node_with(ne.0, ne.1, positions, Rc::clone(&children.ne));
+        } else if position == sw {
+            return self.get_node_with(sw.0, sw.1, positions, Rc::clone(&children.sw));
+        } else if position == se {
+            return self.get_node_with(se.0, se.1, positions, Rc::clone(&children.se));
+        } else {
+            panic!("invalid coordinate calculated");
+        }
+    }
+
+    pub fn get(&self, x: isize, y: isize) -> Option<Automata> {
+        let top = if let Some(top) = self.top.as_ref() {
+            Rc::clone(top)
+        } else {
+            return None;
+        };
+
+        let mut positions = Vec::with_capacity(top.level);
+        let mut xx = x;
+        let mut yy = y;
+        for _ in 0..top.level-2 {
+            positions.push((xx,yy));
+            xx /= 2;
+            yy /= 2;
+        }
+        println!("positions: {:?}", positions);
+        println!("levels: {:?}", top.level);
+
+        // TODO: what if level == 0?
+        let children = top.get_children();
+
+        if y < 0 {
+            if x < 0 { // NW
+                Some(self.get_node_with(-1, -1, &positions, Rc::clone(&children.nw)))
+            } else { // NE
+                Some(self.get_node_with(0, -1, &positions, Rc::clone(&children.ne)))
+            }
+        } else {
+            if x < 0 { // SW
+                Some(self.get_node_with(-1, 0, &positions, Rc::clone(&children.sw)))
+            } else { // SE
+                Some(self.get_node_with(0, 0, &positions, Rc::clone(&children.se)))
+            }
+        }
+    }
 }
 
 
@@ -423,7 +522,133 @@ mod tests {
     use super::*;
 
     #[test]
-    fn step_level_0() {
-        unimplemented!();
+    fn get() {
+        let cell_width = 4;
+        let cell_height = 4;
+        let cells = vec![
+            1,1,1,1,
+            1,1,0,1,
+            1,1,1,1,
+            1,1,1,1,
+        ];
+        let hashlife = Hashlife::from_array(3, cells, cell_width, cell_height);
+        for x in -2..2 {
+            for y in -2..2 {
+                if x == 0 && y == -1 { continue; }
+                assert_eq!(hashlife.get(x, y), Some(Automata::Alive));
+            }
+        }
+        assert_eq!(hashlife.get(0, -1), Some(Automata::Dead));
+    }
+
+    #[test]
+    fn get8() {
+        let cell_width = 8;
+        let cell_height = 8;
+        let cells = vec![
+            1,1,1,1, 1,1,0,1,
+            1,1,1,1, 1,1,1,1,
+            1,1,1,1, 1,1,1,1,
+            1,1,0,1, 1,1,1,1,
+            
+            1,1,1,1, 1,1,1,1,
+            1,1,1,1, 1,1,1,1,
+            1,0,1,1, 1,1,1,1,
+            1,1,1,1, 1,1,1,1,
+        ];
+        let hashlife = Hashlife::from_array(3, cells, cell_width, cell_height);
+        println!("here");
+        let res = hashlife.get(2, -4);
+        assert_eq!(res, Some(Automata::Dead));
+        assert_eq!(hashlife.get(-2, -1), Some(Automata::Dead));
+        assert_eq!(hashlife.get(-3, 2), Some(Automata::Dead));
+        for x in -4..4 {
+            for y in -4..4 {
+                if x == 2 && y == -4 { continue; }
+                if x == -2 && y == -1 { continue; }
+                if x == -3 && y == 2 { continue; }
+                assert_eq!(hashlife.get(x, y), Some(Automata::Alive));
+            }
+        }
+    }
+
+    #[test]
+    fn array_construct_even() {
+        let cell_width = 4;
+        let cell_height = 6;
+        let cells = vec![
+            1,0,0,1,
+            1,1,0,1,
+            1,0,1,1,
+            1,0,0,1,
+            0,0,1,0,
+            0,1,0,1
+        ];
+        let mut hashlife = Hashlife::from_array(3, cells, cell_width, cell_height);
+
+        // two left most columns
+        for x in -4..-2 {
+            for y in -4..4 {
+                assert_eq!(hashlife.get(x, y), Some(Automata::Dead));
+            }
+        }
+
+        // two right most columns
+        for x in 2..4 {
+            for y in -4..4 {
+                assert_eq!(hashlife.get(x, y), Some(Automata::Dead));
+            }
+        }
+
+        // top and bottom rows
+        for x in -2..2 {
+            for y in [-4, 3].iter() {
+                assert_eq!(hashlife.get(x, *y), Some(Automata::Dead));
+            }
+        }
+
+        // row 1
+        assert_eq!(hashlife.get(-2,-3), Some(Automata::Alive));
+        assert_eq!(hashlife.get(-1,-3), Some(Automata::Dead));
+        assert_eq!(hashlife.get( 0,-3), Some(Automata::Dead));
+        assert_eq!(hashlife.get( 1,-3), Some(Automata::Alive));
+        // row 2
+        assert_eq!(hashlife.get(-2,-2), Some(Automata::Alive));
+        assert_eq!(hashlife.get(-1,-2), Some(Automata::Alive));
+        assert_eq!(hashlife.get( 0,-2), Some(Automata::Dead));
+        assert_eq!(hashlife.get( 1,-2), Some(Automata::Alive));
+        // row 3
+        assert_eq!(hashlife.get(-2,-1), Some(Automata::Alive));
+        assert_eq!(hashlife.get(-1,-1), Some(Automata::Dead));
+        assert_eq!(hashlife.get( 0,-1), Some(Automata::Alive));
+        assert_eq!(hashlife.get( 1,-1), Some(Automata::Alive));
+        // row 4
+        assert_eq!(hashlife.get(-2, 0), Some(Automata::Alive));
+        assert_eq!(hashlife.get(-1, 0), Some(Automata::Dead));
+        assert_eq!(hashlife.get( 0, 0), Some(Automata::Dead));
+        assert_eq!(hashlife.get( 1, 0), Some(Automata::Alive));
+        // row 5
+        assert_eq!(hashlife.get(-2, 1), Some(Automata::Dead));
+        assert_eq!(hashlife.get(-1, 1), Some(Automata::Dead));
+        assert_eq!(hashlife.get( 0, 1), Some(Automata::Alive));
+        assert_eq!(hashlife.get( 1, 1), Some(Automata::Dead));
+        // row 6
+        assert_eq!(hashlife.get(-2, 2), Some(Automata::Dead));
+        assert_eq!(hashlife.get(-1, 2), Some(Automata::Alive));
+        assert_eq!(hashlife.get( 0, 2), Some(Automata::Dead));
+        assert_eq!(hashlife.get( 1, 2), Some(Automata::Alive));
+
+
+        // top and bottom rows
+        // assert_eq!(hashlife.get(-2,-4), Some(Automata::Dead));
+        // assert_eq!(hashlife.get(-1,-4), Some(Automata::Dead));
+        // assert_eq!(hashlife.get( 0,-4), Some(Automata::Dead));
+        // assert_eq!(hashlife.get( 1,-4), Some(Automata::Dead));
+
+        // // bottom
+        // assert_eq!(hashlife.get(-2, 3), Some(Automata::Dead));
+        // assert_eq!(hashlife.get(-1, 3), Some(Automata::Dead));
+        // assert_eq!(hashlife.get( 0, 3), Some(Automata::Dead));
+        // assert_eq!(hashlife.get( 1, 3), Some(Automata::Dead));
     }
 }
