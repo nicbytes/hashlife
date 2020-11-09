@@ -69,8 +69,10 @@ struct GrandAutomata {
     sese: Automata,
 }
 
+
 pub struct Hashlife {
     cache: Cache,
+    top: Option<Rc<Node>>,
 }
 
 struct Cache {
@@ -91,10 +93,22 @@ impl Cache {
     }
 }
 
+struct ConstructionParameters<'a> {
+    level: usize,
+    vector: &'a Vec<u8>,
+    width: usize,
+    height: usize,
+    min_width: isize,
+    max_width: isize,
+    min_height: isize,
+    max_height: isize,
+}
+
 impl Hashlife {
     fn new() -> Self {
         Self {
             cache: Cache::new(),
+            top: None,
         }
     }
 
@@ -232,10 +246,79 @@ impl Hashlife {
         }
     }
 
+    /// Construct a Hashlife program given an array of states.
+    pub fn from_array(size: usize, array: Vec<u8>, width: usize, height: usize) -> Self {
+        //
+        let hashlife = Hashlife::new();
 
-    fn new(size: usize) -> Self {
-        
+        // Calculat
+        let min_width = -(width as isize / 2);
+        let max_width = width as isize - min_width;
+        let min_height = -(height as isize / 2);
+        let max_height = height as isize - min_height;
+        // Pack some configuration parameters to build the first generation.
+        let params = ConstructionParameters {
+            level: size,
+            vector: &array,
+            width,
+            height,
+            min_width,
+            max_width,
+            min_height,
+            max_height,
+        };
+
+        let top = hashlife.construct(0, 0, size, &params);
+
+        hashlife
     }
+
+    /// Recursively build a Quad tree.
+    fn construct(&self, x: isize, y: isize, level: usize, params: &ConstructionParameters) -> Rc<Node> {
+        // Base case: retrieve value from cell
+        if level == 0 {
+            let xx = ((params.width / 2) as isize + x) as usize;
+            let yx = ((params.height / 2) as isize + y) as usize;
+            let v = params.vector[params.width * yx + xx];
+            let a = if v % 2 == 0 { Automata::Dead } else { Automata::Alive };
+            return self.make_automata(a);
+        }
+
+        let size = level.pow(level as u32);
+
+        ()
+    }
+
+    /// Construct an empty Quad Node at the specified level.
+    fn empty(&mut self, level: usize) -> Rc<Node> {
+        // Base case
+        if level == 0 {
+            return self.make_automata(Automata::Dead);
+        }
+        // Construct children.
+        let child = self.empty(level - 1);
+        let children = Children {
+            nw: Rc::clone(&child),
+            ne: Rc::clone(&child),
+            sw: Rc::clone(&child),
+            se: Rc::clone(&child),
+        };
+        let hash = calculate_hash(&children);
+        // Check if node already exists in the cache.
+        if let Some(ref_to_node) = self.cache.join.get(&hash) {
+            return Rc::clone(ref_to_node);
+        };
+        let empty = Rc::new(Node {
+            level,
+            population: 0,
+            children: Some(children),
+            hash,
+        });
+        // Add node to cache.
+        self.cache.join.insert(hash, Rc::clone(&empty));
+        empty
+    }
+
 }
 
 
@@ -312,7 +395,7 @@ impl Node {
 
 impl Hash for Node {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.children.hash(state);
+        self.hash.hash(state);
     }
 }
 
