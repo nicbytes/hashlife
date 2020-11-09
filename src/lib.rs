@@ -110,7 +110,7 @@ struct BoundingBox {
 
 impl BoundingBox {
     fn new(x: isize, y: isize, level: usize, max_level: usize) -> Self{
-        let level_delta = max_level - level;
+        let level_delta = level;
         let pow2ld = 2isize.pow(level_delta as u32);
         let top = y * pow2ld;
         let bottom = y * pow2ld + pow2ld - 1;
@@ -125,7 +125,14 @@ impl BoundingBox {
     }
 
     fn collides(&self, other: &BoundingBox) -> bool {
-        !(other.top < self.bottom || other.bottom > self.top || other.left > self.right || other.right < self.left)
+        // up is -y, down is +y
+        let other_below_self = other.top > self.bottom;
+        let other_above_self = other.bottom < self.top;
+        // left is -x, right is +x
+        let other_right_of_self = other.left > self.right;
+        let other_left_of_self = other.right < self.left;
+        return !(other_below_self || other_above_self || other_right_of_self || other_left_of_self);
+        // !(other.top < self.bottom || other.bottom > self.top || other.left > self.right || other.right < self.left)
     }
 
 }
@@ -303,7 +310,8 @@ impl Hashlife {
         if level == 0 {
             let xx = ((params.width / 2) as isize + x) as usize;
             let yx = ((params.height / 2) as isize + y) as usize;
-            let v = params.vector[params.width * yx + xx];
+            let idx = params.width * yx + xx;
+            let v = params.vector[idx];
             let a = if v % 2 == 0 { Automata::Dead } else { Automata::Alive };
             return self.make_automata(a);
         }
@@ -314,7 +322,7 @@ impl Hashlife {
             if bound.collides(&params.bound) {
                 self.construct(x * 2 + dx, y * 2 + dy, level - 1, &params)
             } else {
-                self.empty(level)
+                self.empty(level - 1)
             }
         };
 
@@ -558,6 +566,7 @@ mod tests {
         ];
         let hashlife = Hashlife::from_array(3, cells, cell_width, cell_height);
         println!("here");
+        // Path is meant to be (0,-1) -> (1,-2) -> (2,-4)
         let res = hashlife.get(2, -4);
         assert_eq!(res, Some(Automata::Dead));
         assert_eq!(hashlife.get(-2, -1), Some(Automata::Dead));
