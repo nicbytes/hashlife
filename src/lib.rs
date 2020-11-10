@@ -69,7 +69,6 @@ struct GrandAutomata {
     sese: Automata,
 }
 
-
 pub struct Hashlife {
     cache: Cache,
     top: Option<Rc<Node>>,
@@ -112,13 +111,13 @@ impl BoundingBox {
     fn new(x: isize, y: isize, level: usize, max_level: usize) -> Self {
         let level_delta = level;
         let pow2ld = 2isize.pow(level_delta as u32);
-        let top = y * pow2ld;
-        let bottom = y * pow2ld + pow2ld - 1;
+        let top = y * pow2ld + pow2ld - 1;
+        let bottom = y * pow2ld;
         let left = x * pow2ld;
         let right = x * pow2ld + pow2ld - 1;
 
-        assert!(top <= bottom);
-        assert!(left <= right);
+        assert!(top >= bottom, "top: {}, bottom: {}", top, bottom);
+        assert!(left <= right, "left: {}, right: {}", left, right);
 
         Self { top, bottom, left, right }
     }
@@ -129,8 +128,8 @@ impl BoundingBox {
 
     fn collides(&self, other: &BoundingBox) -> bool {
         // up is -y, down is +y
-        let other_below_self = other.top > self.bottom;
-        let other_above_self = other.bottom < self.top;
+        let other_below_self = other.top < self.bottom;
+        let other_above_self = other.bottom > self.top;
         // left is -x, right is +x
         let other_right_of_self = other.left > self.right;
         let other_left_of_self = other.right < self.left;
@@ -300,11 +299,11 @@ impl Hashlife {
         let left = -(width as isize / 2);
         let right = width as isize + left - 1;
         // center on y-axis and nevative is up
-        let top = -(height as isize / 2);
-        let bottom = height as isize + top - 1;
+        let bottom = -(height as isize / 2);
+        let top = height as isize + bottom - 1;
         let bound = BoundingBox::from(top, bottom, left, right);
-        assert_eq!(bound.width(), width);
-        assert_eq!(bound.height(), height);
+        // assert_eq!(bound.width(), width);
+        // assert_eq!(bound.height(), height);
         // Pack some configuration parameters to build the first generation.
         let params = ConstructionParameters {
             level: size,
@@ -314,7 +313,14 @@ impl Hashlife {
             bound,
         };
 
-        let top = hashlife.construct(0, 0, size, &params);
+
+
+        let nw = hashlife.construct(-1, 0, size, &params);
+        let ne= hashlife.construct(0, 0, size, &params);
+        let sw= hashlife.construct(-1, -1, size, &params);
+        let se= hashlife.construct(0, -1, size, &params);
+        let top = hashlife.join(nw, ne, sw, se);
+        // let top = hashlife.construct(-1, -1, size, &params);
 
         let v = top.as_array().into_iter().map(|arr| arr.into_iter().map(|a| a as usize).collect::<Vec<usize>>()).collect::<Vec<Vec<usize>>>();
         for row in v.iter() {
@@ -335,7 +341,7 @@ impl Hashlife {
                 return self.empty(0);
             }
             let xidx = (x - params.bound.left) as usize;
-            let yidx = (y - params.bound.top) as usize;
+            let yidx = (y - params.bound.bottom) as usize;
             let idx = params.width * yidx + xidx;
             let v = params.vector[idx];
             let a = Automata::from(v as usize);
@@ -352,10 +358,10 @@ impl Hashlife {
             }
         };
 
-        let nw = assemble(0, 0);
-        let ne = assemble(1, 0);
-        let sw = assemble(0, 1);
-        let se = assemble(1, 1);
+        let nw = assemble(0, 1);
+        let ne = assemble(1, 1);
+        let sw = assemble(0, 0);
+        let se = assemble(1, 0);
 
         self.join(nw, ne, sw, se)
     }
@@ -395,14 +401,14 @@ impl Hashlife {
             return node.as_automata();
         }
         let position = positions[node.level-1];
+        let nw = (x*2, y*2+1);
+        let ne = (x*2+1, y*2+1);
+        let sw = (x*2, y*2);
+        let se = (x*2+1, y*2);
         println!("Position: {:?}, level: {},  NW {:?}, NE {:?}, SW {:?}, SE {:?}",
             position, node.level,
-            (x*2, y*2),(x*2+1, y*2),(x*2, y*2+1),(x*2+1, y*2+1)
+            nw,ne,sw,se
         );
-        let nw = (x*2, y*2);
-        let ne = (x*2+1, y*2);
-        let sw = (x*2, y*2+1);
-        let se = (x*2+1, y*2+1);
         let children = node.get_children();
         if position == nw {
             return self.get_node_with(nw.0, nw.1, positions, Rc::clone(&children.nw));
@@ -427,7 +433,7 @@ impl Hashlife {
         let mut positions = Vec::with_capacity(top.level);
         let mut xx = x;
         let mut yy = y;
-        for _ in 0..top.level -1 {
+        for _ in 0..top.level {
             positions.push((xx,yy));
             xx = xx.div_euclid(2);
             yy = yy.div_euclid(2);
@@ -441,16 +447,16 @@ impl Hashlife {
         let children = top.get_children();
 
         if y < 0 {
-            if x < 0 { // NW
-                Some(self.get_node_with(-1, -1, &positions, Rc::clone(&children.nw)))
-            } else { // NE
-                Some(self.get_node_with(0, -1, &positions, Rc::clone(&children.ne)))
+            if x < 0 { // SW
+                Some(self.get_node_with(-1, -1, &positions, Rc::clone(&children.sw)))
+            } else { // SE
+                Some(self.get_node_with(0, -1, &positions, Rc::clone(&children.se)))
             }
         } else {
-            if x < 0 { // SW
-                Some(self.get_node_with(-1, 0, &positions, Rc::clone(&children.sw)))
-            } else { // SE
-                Some(self.get_node_with(0, 0, &positions, Rc::clone(&children.se)))
+            if x < 0 { // NW
+                Some(self.get_node_with(-1, 0, &positions, Rc::clone(&children.nw)))
+            } else { // NE
+                Some(self.get_node_with(0, 0, &positions, Rc::clone(&children.ne)))
             }
         }
     }
@@ -720,5 +726,28 @@ mod tests {
         // assert_eq!(hashlife.get(-1, 3), Some(Automata::Dead));
         // assert_eq!(hashlife.get( 0, 3), Some(Automata::Dead));
         // assert_eq!(hashlife.get( 1, 3), Some(Automata::Dead));
+    }
+
+    #[test]
+    fn bounding_box_single_pt() {
+        let bound = BoundingBox::from(0,0,0,0);
+        assert_eq!(bound.width(), 1);
+        assert_eq!(bound.height(), 1);
+        assert_eq!(bound.top, 0);
+        assert_eq!(bound.bottom, 0);
+        assert_eq!(bound.left, 0);
+        assert_eq!(bound.right, 0);
+    }
+
+    #[test]
+    fn new_bounding_box_1() {
+        let (x, y) = (0,0);
+        let level = 1;
+        let max = 1;
+        let b = BoundingBox::new(x, y, level, max);
+        assert_eq!(b.left, 0);
+        assert_eq!(b.right, 1);
+        assert_eq!(b.bottom, 0);
+        assert_eq!(b.top, 1);
     }
 }

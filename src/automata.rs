@@ -28,6 +28,18 @@ impl Automata {
     }
 }
 
+use std::fmt;
+
+impl fmt::Display for Automata {
+    // This trait requires `fmt` with this exact signature.
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Automata::Dead => write!(f, "Dead"),
+            Automata::Alive => write!(f, "Alive"),
+        }
+    }
+}
+
 /// Generic simulator for life of any rule set.
 pub fn sim(center: Automata, neighbors: Vec<Automata>, birth: Vec<usize>, servival: Vec<usize>) -> Automata {
     let living_neighbors: usize = neighbors.iter().map(|a| *a as usize).sum();
