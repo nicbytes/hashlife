@@ -109,13 +109,16 @@ struct BoundingBox {
 }
 
 impl BoundingBox {
-    fn new(x: isize, y: isize, level: usize, max_level: usize) -> Self{
+    fn new(x: isize, y: isize, level: usize, max_level: usize) -> Self {
         let level_delta = level;
         let pow2ld = 2isize.pow(level_delta as u32);
         let top = y * pow2ld;
         let bottom = y * pow2ld + pow2ld - 1;
         let left = x * pow2ld;
         let right = x * pow2ld + pow2ld - 1;
+
+        assert!(top <= bottom);
+        assert!(left <= right);
 
         Self { top, bottom, left, right }
     }
@@ -133,6 +136,14 @@ impl BoundingBox {
         let other_left_of_self = other.right < self.left;
         return !(other_below_self || other_above_self || other_right_of_self || other_left_of_self);
         // !(other.top < self.bottom || other.bottom > self.top || other.left > self.right || other.right < self.left)
+    }
+
+    fn width(&self) -> usize {
+        (self.right - self.left + 1).abs() as usize
+    }
+
+    fn height(&self) -> usize {
+        (self.bottom - self.top + 1).abs() as usize
     }
 
 }
@@ -281,15 +292,19 @@ impl Hashlife {
 
     /// Construct a Hashlife program given an array of states.
     pub fn from_array(size: usize, array: Vec<u8>, width: usize, height: usize) -> Self {
+        assert_eq!(array.len(), width * height);
         //
         let mut hashlife = Hashlife::new();
 
-        // Calculat
-        let min_width = -(width as isize / 2);
-        let max_width = width as isize - min_width;
-        let min_height = -(height as isize / 2);
-        let max_height = height as isize - min_height;
-        let bound = BoundingBox::from(min_height, max_height, min_width, max_width);
+        // center on x-axis and negative on left
+        let left = -(width as isize / 2);
+        let right = width as isize + left - 1;
+        // center on y-axis and nevative is up
+        let top = -(height as isize / 2);
+        let bottom = height as isize + top - 1;
+        let bound = BoundingBox::from(top, bottom, left, right);
+        assert_eq!(bound.width(), width);
+        assert_eq!(bound.height(), height);
         // Pack some configuration parameters to build the first generation.
         let params = ConstructionParameters {
             level: size,
@@ -300,6 +315,13 @@ impl Hashlife {
         };
 
         let top = hashlife.construct(0, 0, size, &params);
+
+        let v = top.as_array().into_iter().map(|arr| arr.into_iter().map(|a| a as usize).collect::<Vec<usize>>()).collect::<Vec<Vec<usize>>>();
+        for row in v.iter() {
+            println!("{:?}", row);
+        }
+        // println!("Array: {:?}", v);
+
         hashlife.top = Some(top);
         hashlife
     }
@@ -308,17 +330,21 @@ impl Hashlife {
     fn construct(&mut self, x: isize, y: isize, level: usize, params: &ConstructionParameters) -> Rc<Node> {
         // Base case: retrieve value from cell
         if level == 0 {
-            let xx = ((params.width / 2) as isize + x) as usize;
-            let yx = ((params.height / 2) as isize + y) as usize;
-            let idx = params.width * yx + xx;
+            let bound = BoundingBox::new(x, y, level,  params.level);
+            if !bound.collides(&params.bound) {
+                return self.empty(0);
+            }
+            let xidx = (x - params.bound.left) as usize;
+            let yidx = (y - params.bound.top) as usize;
+            let idx = params.width * yidx + xidx;
             let v = params.vector[idx];
-            let a = if v % 2 == 0 { Automata::Dead } else { Automata::Alive };
+            let a = Automata::from(v as usize);
             return self.make_automata(a);
         }
 
         // Small helper function, speed up construction if building an empty region.
         let mut assemble = |dx, dy| {
-            let bound = BoundingBox::new(x, y, level,  params.level);
+            let bound = BoundingBox::new(x, y, level-1,  params.level);
             if bound.collides(&params.bound) {
                 self.construct(x * 2 + dx, y * 2 + dy, level - 1, &params)
             } else {
@@ -368,7 +394,7 @@ impl Hashlife {
         if node.level == 0 {
             return node.as_automata();
         }
-        let position = positions[node.level - 2];
+        let position = positions[node.level-1];
         println!("Position: {:?}, level: {},  NW {:?}, NE {:?}, SW {:?}, SE {:?}",
             position, node.level,
             (x*2, y*2),(x*2+1, y*2),(x*2, y*2+1),(x*2+1, y*2+1)
@@ -401,13 +427,15 @@ impl Hashlife {
         let mut positions = Vec::with_capacity(top.level);
         let mut xx = x;
         let mut yy = y;
-        for _ in 0..top.level-2 {
+        for _ in 0..top.level -1 {
             positions.push((xx,yy));
-            xx /= 2;
-            yy /= 2;
+            xx = xx.div_euclid(2);
+            yy = yy.div_euclid(2);
         }
+        println!("------------------------------------------------------------------------------------");
         println!("positions: {:?}", positions);
-        println!("levels: {:?}", top.level);
+        println!("top level: {:?}", top.level);
+        println!("target: {:?}", (x, y));
 
         // TODO: what if level == 0?
         let children = top.get_children();
@@ -498,6 +526,39 @@ impl Node {
         }
 
     }
+
+    fn as_array(&self) -> Vec<Vec<Automata>> {
+        if self.level == 0 {
+            return vec![vec![self.as_automata()]];
+        }
+        let children = self.get_children();
+        let nw = children.nw.as_array();
+        let ne = children.ne.as_array();
+        let sw = children.sw.as_array();
+        let se = children.se.as_array();
+        let top = nw.into_iter()
+            .zip(ne.into_iter())
+            .map(|(left, right)| {
+                let mut result = Vec::with_capacity(left.len() + right.len());
+                result.extend(left);
+                result.extend(right);
+                result
+            })
+            .collect::<Vec<Vec<Automata>>>();
+        let bottom = sw.into_iter()
+            .zip(se.into_iter())
+            .map(|(left, right)| {
+                let mut result = Vec::with_capacity(left.len() + right.len());
+                result.extend(left);
+                result.extend(right);
+                result
+            })
+            .collect::<Vec<Vec<Automata>>>();
+        let mut rows = Vec::with_capacity(top.len() + bottom.len());
+        rows.extend(top);
+        rows.extend(bottom);
+        rows
+    }
 }
 
 impl Hash for Node {
@@ -530,7 +591,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn get() {
+    fn get4() {
         let cell_width = 4;
         let cell_height = 4;
         let cells = vec![
@@ -539,7 +600,7 @@ mod tests {
             1,1,1,1,
             1,1,1,1,
         ];
-        let hashlife = Hashlife::from_array(3, cells, cell_width, cell_height);
+        let hashlife = Hashlife::from_array(2, cells, cell_width, cell_height);
         for x in -2..2 {
             for y in -2..2 {
                 if x == 0 && y == -1 { continue; }

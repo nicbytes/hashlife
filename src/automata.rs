@@ -7,10 +7,10 @@ pub enum Automata {
 
 impl Automata {
     pub fn from(number: usize) -> Self {
-        if number % 2 == 0 {
-            Self::Dead
-        } else {
-            Self::Alive
+        match number {
+            0 => Self::Dead,
+            1 => Self::Alive,
+            _ => panic!("not an automata")
         }
     }
     pub fn is_dead(&self) -> bool {
@@ -97,6 +97,13 @@ mod tests {
         let a = Automata::Dead;
         assert_eq!(a.is_dead(), true);
         assert_eq!(a.is_alive(), false);
+    }
+
+    #[test]
+    fn from() {
+        let num = 1usize;
+        let a = Automata::from(num);
+        assert_eq!(a, Automata::Alive);
     }
 
     #[test]
