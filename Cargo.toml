@@ -1,5 +1,5 @@
 [package]
-name = "toruslife"
+name = "hashlife"
 version = "0.0.0"
 authors = ["Nicholas Buckeridge <bucknich@gmail.com>"]
 edition = "2018"

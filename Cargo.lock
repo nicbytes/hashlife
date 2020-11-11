@@ -252,6 +252,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "hashlife"
+version = "0.0.0"
+dependencies = [
+ "argh",
+ "cached",
+ "getrandom",
+ "itertools",
+ "termion",
+ "tui",
+]
+
+[[package]]
 name = "heck"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -403,18 +415,6 @@ dependencies = [
  "numtoa",
  "redox_syscall",
  "redox_termios",
-]
-
-[[package]]
-name = "toruslife"
-version = "0.0.0"
-dependencies = [
- "argh",
- "cached",
- "getrandom",
- "itertools",
- "termion",
- "tui",
 ]
 
 [[package]]

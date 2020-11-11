@@ -713,19 +713,6 @@ mod tests {
         assert_eq!(hashlife.get(-1, 2), Some(Automata::Alive));
         assert_eq!(hashlife.get( 0, 2), Some(Automata::Dead));
         assert_eq!(hashlife.get( 1, 2), Some(Automata::Alive));
-
-
-        // top and bottom rows
-        // assert_eq!(hashlife.get(-2,-4), Some(Automata::Dead));
-        // assert_eq!(hashlife.get(-1,-4), Some(Automata::Dead));
-        // assert_eq!(hashlife.get( 0,-4), Some(Automata::Dead));
-        // assert_eq!(hashlife.get( 1,-4), Some(Automata::Dead));
-
-        // // bottom
-        // assert_eq!(hashlife.get(-2, 3), Some(Automata::Dead));
-        // assert_eq!(hashlife.get(-1, 3), Some(Automata::Dead));
-        // assert_eq!(hashlife.get( 0, 3), Some(Automata::Dead));
-        // assert_eq!(hashlife.get( 1, 3), Some(Automata::Dead));
     }
 
     #[test]
