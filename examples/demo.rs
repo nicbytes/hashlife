@@ -64,6 +64,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 buffer = vec![ 0u8; width * height];
                 let mut rbuffer = vec![ 0u8; width * height];
                 getrandom(&mut rbuffer);
+                let rbuffer = rbuffer.iter().map(|v| if v%2==0{0}else{1}).collect();
                 let hashlife = Hashlife::from_array(rbuffer, width, height, edge_rules);
                 gol = Some(hashlife);
             }
@@ -89,41 +90,31 @@ fn main() -> Result<(), Box<dyn Error>> {
             } else {
                 gol.draw_diff_to_viewport_array(&mut buffer, bound);
             }
-            
-
-            buffer.iter()
-                .map(|c| Automata::from(*c as usize))
-                .chunks(viewport_width as usize * 2)
-                .into_iter()
-                .map(|iter| {
-                    let a = iter.chunks(viewport_width as usize);
-                    let b = a.into_iter();
-                    b.map(|cells| cells.collect::<Vec<Vec<Automata>>>().clone())
-                })
-                .into_iter()
-                .map(|mut it| {
-                    let top = it.next().unwrap();
-                    let bottom = it.next().unwrap();
-                    top.into_iter().zip(bottom.into_iter())
-                        .map(|(t,b )| {
-                            match (t, b) {
-                                (Automata::Alive, Automata::Alive) => BLOCK_FULL,
-                                (Automata::Alive, Automata::Dead)  => BLOCK_HALF_UPPER,
-                                (Automata::Dead, Automata::Alive) => BLOCK_HALF_LOWER,
-                                (Automata::Dead, Automata::Dead) => " ",
-                            }
-                        })
-                    .collect::<String>()
-                })
-                .enumerate()
-                .for_each(|(i, s)| {
-                    let line = Block::default().borders(Borders::NONE).title(s);
-                    let mut area = grid_size.clone();
-                    area.y += i as u16;
-                    area.height = 2;
-                    f.render_widget(line, area);
-                })
-            ;
+            (0..viewport_height).map(|i| {
+                let start = (2 * i * viewport_width) as usize;
+                let middle = ((2 * i + 1) * viewport_width) as usize;
+                let end = ((2 * i + 2) * viewport_width) as usize;
+                let line1 = &buffer[start..middle];
+                let line2 = &buffer[middle..end];
+                let line: String =  line1.iter().zip(line2.iter()).map(|(top, bottom)| {
+                    match (top, bottom) {
+                        (1, 1) => BLOCK_FULL,
+                        (1, 0)  => BLOCK_HALF_UPPER,
+                        (0, 1) => BLOCK_HALF_LOWER,
+                        (0, 0) => " ",
+                        _ => panic!("not possilbe")
+                    }
+                }).collect();
+                line
+            })
+            .enumerate()
+            .for_each(|(i, s)| {
+                let line = Block::default().borders(Borders::NONE).title(s);
+                let mut area = grid_size.clone();
+                area.y += i as u16;
+                area.height = 2;
+                f.render_widget(line, area);
+            });
         }).expect("failed to draw terminal");
         
         match events.next()? {

@@ -334,14 +334,6 @@ impl Hashlife {
     }
 
     fn expand_empty_border(&mut self, node: Rc<Node>) -> Rc<Node> {
-
-        let debug = |n: &Rc<Node>| {
-            let v = n.as_array().into_iter().map(|arr| arr.into_iter().map(|a| a as usize).collect::<Vec<usize>>()).collect::<Vec<Vec<usize>>>();
-            for row in v.iter() {
-                println!("{:?}", row);
-            }
-        };
-
         let c = node.get_children();
         let e = self.empty(node.level-1);
         let e = || Rc::clone(&e);
@@ -349,10 +341,6 @@ impl Hashlife {
         let ne = self.join(e(), e(), Rc::clone(&c.ne), e());
         let sw = self.join(e(), Rc::clone(&c.sw), e(), e());
         let se = self.join(Rc::clone(&c.se), e(), e(), e());
-        println!("nw:");debug(&nw);
-        println!("ne:");debug(&ne);
-        println!("sw:");debug(&sw);
-        println!("se:");debug(&se);
         self.join(nw, ne, sw, se)
     }
 
@@ -558,10 +546,6 @@ impl Hashlife {
         let ne = (x*2+1, y*2+1);
         let sw = (x*2, y*2);
         let se = (x*2+1, y*2);
-        println!("Position: {:?}, level: {},  NW {:?}, NE {:?}, SW {:?}, SE {:?}",
-            position, node.level,
-            nw,ne,sw,se
-        );
         let children = node.get_children();
         if position == nw {
             return self.get_node_with(nw.0, nw.1, positions, Rc::clone(&children.nw));
@@ -591,10 +575,6 @@ impl Hashlife {
             xx = xx.div_euclid(2);
             yy = yy.div_euclid(2);
         }
-        println!("------------------------------------------------------------------------------------");
-        println!("positions: {:?}", positions);
-        println!("top level: {:?}", top.level);
-        println!("target: {:?}", (x, y));
 
         // TODO: what if level == 0?
         let children = top.get_children();
@@ -945,7 +925,6 @@ mod tests {
         ];
         let hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
         assert_eq!(hashlife.max_level(), 3);
-        println!("here");
         assert_eq!(hashlife.get(2, 3), Some(Automata::Dead));
         assert_eq!(hashlife.get(-2, 0), Some(Automata::Dead));
         assert_eq!(hashlife.get(-3, -3), Some(Automata::Dead));
