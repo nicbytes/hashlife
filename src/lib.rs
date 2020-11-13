@@ -156,7 +156,7 @@ struct BoundingBox {
 }
 
 impl BoundingBox {
-    fn new(x: isize, y: isize, level: usize, max_level: usize) -> Self {
+    fn new(x: isize, y: isize, level: usize) -> Self {
         let level_delta = level;
         let pow2ld = 2isize.pow(level_delta as u32);
         let top = y * pow2ld + pow2ld - 1;
@@ -485,7 +485,7 @@ impl Hashlife {
     fn construct(&mut self, x: isize, y: isize, level: usize, params: &ConstructionParameters) -> Rc<Node> {
         // Base case: retrieve value from cell
         if level == 0 {
-            let bound = BoundingBox::new(x, y, level,  params.level);
+            let bound = BoundingBox::new(x, y, level);
             if !bound.collides(&params.bound) {
                 return self.empty(0);
             }
@@ -499,7 +499,7 @@ impl Hashlife {
 
         // Small helper function, speed up construction if building an empty region.
         let mut assemble = |dx, dy| {
-            let bound = BoundingBox::new(x, y, level-1,  params.level);
+            let bound = BoundingBox::new(x, y, level-1);
             if bound.collides(&params.bound) {
                 self.construct(x * 2 + dx, y * 2 + dy, level - 1, &params)
             } else {
@@ -621,8 +621,116 @@ impl Hashlife {
     }
 
 
-    /// Draw automata that differes from the previous generation in the given array
-    fn draw_diff_to_viewport_array(&mut self, buffer: &mut [u8], width: usize, height: usize) {}
+    /// Draw automata that differes from the previous generation in the given array.
+    fn draw_diff_to_viewport_array(&mut self, buffer: &mut [u8], viewport: BoundingBox) {
+        // case where the cell only contains 1 level.
+        if self.max_level() == 0 {
+            if let Some(top) = self.top.as_ref() {
+                buffer[0] = top.population as u8;
+            }
+            return;
+        }
+        let top = if let Some(top) = &self.top {
+            Rc::clone(top)
+        } else {
+            return;
+        };
+        let previous = if let Some(previous) = &self.previous {
+            if previous.level == 0 {
+                return;
+            }
+            Rc::clone(previous)
+        } else {
+            return;
+        };
+
+        let top_children = top.get_children();
+        let previous_children = previous.get_children();
+        let t_nw = Rc::clone(&top_children.nw);
+        let t_ne = Rc::clone(&top_children.ne);
+        let t_sw = Rc::clone(&top_children.sw);
+        let t_se = Rc::clone(&top_children.se);
+        let p_nw = Rc::clone(&previous_children.nw);
+        let p_ne = Rc::clone(&previous_children.ne);
+        let p_sw = Rc::clone(&previous_children.sw);
+        let p_se = Rc::clone(&previous_children.se);
+        if t_nw != p_nw {
+            self.draw_diff_to_cell(buffer, t_nw, p_nw, &viewport, -1, 0);
+        }
+        if t_ne != p_ne {
+            self.draw_diff_to_cell(buffer, t_ne, p_ne, &viewport, 0, 0);
+        }
+        if t_sw != p_sw {
+            self.draw_diff_to_cell(buffer, t_sw, p_sw, &viewport, -1, -1);
+        }
+        if t_se != p_se {
+            self.draw_diff_to_cell(buffer, t_se, p_se, &viewport, 0, -1);
+        }
+    }
+
+    /// Helper function for drawing the node to the buffer. Children of the node
+    /// will not be drawn if they are equal to the previous respective children.
+    fn draw_diff_to_cell(&mut self, buffer: &mut [u8], node: Rc<Node>, previous: Rc<Node>, viewport: &BoundingBox, x: isize, y: isize) {
+        let area = BoundingBox::new(x, y, node.level);
+        if !area.collides(&viewport) {
+            return;
+        }
+
+        if node.level == 0 {
+            buffer[viewport.index(x, y)] = node.population as u8;
+        } else {
+            let mut draw_down = |dx: isize, dy: isize, n: Rc<Node>, p: Rc<Node>| {
+                if n == p { return; }
+                self.draw_diff_to_cell(&mut buffer[..], n, p, &viewport, 2*x+dx, 2*y+dy);
+            };
+            let c = node.get_children();
+            let pc = previous.get_children();
+            draw_down(0, 1, Rc::clone(&c.nw), Rc::clone(&pc.nw));
+            draw_down(1, 1, Rc::clone(&c.ne), Rc::clone(&pc.ne));
+            draw_down(0, 0, Rc::clone(&c.sw), Rc::clone(&pc.sw));
+            draw_down(1, 0, Rc::clone(&c.se), Rc::clone(&pc.se));
+        }
+    }
+
+    fn draw_to_viewport_buffer(&mut self, buffer: &mut [u8], viewport: BoundingBox) {
+        if self.max_level() == 0 {
+            if let Some(top) = self.top.as_ref() {
+                buffer[0] = top.population as u8;
+            }
+            return;
+        }
+        let top = Rc::clone(self.top.as_ref().unwrap());
+        let c = top.get_children();
+        let nw = Rc::clone(&c.nw);
+        let ne = Rc::clone(&c.ne);
+        let sw = Rc::clone(&c.sw);
+        let se = Rc::clone(&c.se);
+        self.draw_to_cell(buffer, nw, &viewport, -1, 0);
+        self.draw_to_cell(buffer, ne, &viewport, 0, 0);
+        self.draw_to_cell(buffer, sw, &viewport, -1, -1);
+        self.draw_to_cell(buffer, se, &viewport, 0, -1);
+    }
+
+    /// Helper function for drawing the entire tree to a buffer
+    fn draw_to_cell(&mut self, buffer: &mut [u8], node: Rc<Node>, viewport: &BoundingBox, x: isize, y: isize) {
+        let area = BoundingBox::new(x, y, node.level);
+        if !area.collides(&viewport) {
+            return;
+        }
+
+        if node.level == 0 {
+            buffer[viewport.index(x, y)] = node.population as u8;
+        } else {
+            let mut draw_down = |dx: isize, dy: isize, n: Rc<Node>| {
+                self.draw_to_cell(&mut buffer[..], n, &viewport, 2*x+dx, 2*y+dy);
+            }; 
+            let c = node.get_children();
+            draw_down(0, 1, Rc::clone(&c.nw));
+            draw_down(1, 1, Rc::clone(&c.ne));
+            draw_down(0, 0, Rc::clone(&c.sw));
+            draw_down(1, 0, Rc::clone(&c.se));
+        }
+    }
 
     fn as_vector(&self) -> Vec<Automata> {
         if let Some(top) = &self.top {
@@ -926,8 +1034,7 @@ mod tests {
     fn new_bounding_box_1() {
         let (x, y) = (0,0);
         let level = 1;
-        let max = 1;
-        let b = BoundingBox::new(x, y, level, max);
+        let b = BoundingBox::new(x, y, level);
         assert_eq!(b.left, 0);
         assert_eq!(b.right, 1);
         assert_eq!(b.bottom, 0);
@@ -986,7 +1093,7 @@ mod tests {
     }
 
     #[test]
-    fn draw_to_viewport_array() {
+    fn draw_diff_viewport_buffer() {
         let cell_width = 4;
         let cell_height = 6;
         let cells = vec![
@@ -1016,9 +1123,37 @@ mod tests {
         ];
         let mut hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
         hashlife.next_generation();
-        hashlife.draw_diff_to_viewport_array(&mut buffer, cell_width, cell_height);
-        let result = hashlife.as_vector().into_iter().map(|a| a as u8).collect::<Vec<u8>>();
-        assert_eq!(cells_next_expected, result);
+        let bound = BoundingBox::from(2, -3, -2, 1);
+        hashlife.draw_diff_to_viewport_array(&mut buffer, bound);
+        assert_eq!(cells_next_expected, buffer);
+    }
+
+    #[test]
+    fn draw_to_viewport_buffer() {
+        let cell_width = 4;
+        let cell_height = 6;
+        let cells = vec![
+            0,0,0,0,
+            0,1,1,1,
+            0,0,0,0,
+            0,0,0,0,
+            0,0,1,1,
+            0,0,1,1
+        ];
+        let expected = cells.clone();
+
+        let mut buffer = vec![
+            0,0,0,0,
+            0,0,0,0,
+            0,0,0,0,
+            0,0,0,0,
+            0,0,0,0,
+            0,0,0,0,
+        ];
+        let mut hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
+        let bound = BoundingBox::from(2, -3, -2, 1);
+        hashlife.draw_to_viewport_buffer(&mut buffer, bound);
+        assert_eq!(expected, buffer);
     }
 
 
