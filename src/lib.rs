@@ -7,6 +7,29 @@ use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
+/// A `Node` represents the top of a tree (or subtree) in the Hashlife data
+/// structure. The state of Hashlife is stored in a `Node` and its children
+/// forming a state tree.
+/// 
+/// # Level
+/// 
+/// Each `Node` has a `level` where `0` is a leaf and
+/// any positive number is a branch. Given a level 'x', it can be derived
+/// that the node is `x` nodes away from the leaf level. All leaves are on
+/// the same level.
+/// 
+/// # Population
+/// 
+/// Each node has a `population` informing how many living `Automata::Alive`
+/// leaves this subtree constains. If the `Node` is a leaf, then the
+/// popilation can only be 1 or 0 respectively representing
+/// `Automata::Alive` or `Automata::Dead`.
+/// 
+/// # Children
+/// 
+/// The `Node` in a hashlife algorithm is known as a QuadTree where the node
+/// points to four child nodes. The children field is an optional and is
+/// `None` only when it is a leaf node at `level=0`.
 #[derive(Debug)]
 pub struct Node {
     level: usize,
@@ -29,6 +52,12 @@ struct Children {
     ne: Rc<Node>,
     sw: Rc<Node>,
     se: Rc<Node>,
+}
+
+pub enum Edge {
+    Torus,
+    Truncate,
+    Infinite,
 }
 
 struct GrandChildren {
@@ -69,9 +98,28 @@ struct GrandAutomata {
     sese: Automata,
 }
 
+/// A nonant is a 1/9 separation of a space. This structure represents a node
+/// that is separated into 9 nonants.
+/// 
+/// Invarient: The node that constructs this nonant collection must have
+/// `level>=3`.
+struct Nonants {
+    nw: Rc<Node>,
+    ne: Rc<Node>,
+    sw: Rc<Node>,
+    se: Rc<Node>,
+    n_: Rc<Node>,
+    e_: Rc<Node>,
+    s_: Rc<Node>,
+    w_: Rc<Node>,
+    c_: Rc<Node>,
+}
+
 pub struct Hashlife {
     cache: Cache,
+    edge: Edge,
     top: Option<Rc<Node>>,
+    previous: Option<Rc<Node>>,
 }
 
 struct Cache {
@@ -151,7 +199,9 @@ impl Hashlife {
     fn new() -> Self {
         Self {
             cache: Cache::new(),
+            edge: Edge::Infinite,
             top: None,
+            previous: None
         }
     }
 
@@ -178,6 +228,60 @@ impl Hashlife {
         return node;
     }
 
+    /// Separates a node into 9 
+    fn into_nonants(&mut self, node: Rc<Node>) -> Nonants {
+        match &node.level {
+            0 => panic!("attempted to bread node into 9x9 at level 0"),
+            1 => panic!("attempted to bread node into 9x9 at level 1"),
+            2 => panic!("attempted to bread node into 9x9 at level 2"),
+            _ => ()
+        };
+
+        let c = node.get_children();
+        let g = node.get_grand_children();
+
+        Nonants {
+            nw: Rc::clone(&c.nw),
+            ne: Rc::clone(&c.ne),
+            sw: Rc::clone(&c.sw),
+            se: Rc::clone(&c.se),
+            n_: self.join(g.nwne, g.nenw, Rc::clone(&g.nwse), Rc::clone(&g.nesw)),
+            e_: self.join(Rc::clone(&g.nesw), g.nese, Rc::clone(&g.senw), g.sene),
+            s_: self.join(Rc::clone(&g.swne), Rc::clone(&g.senw), g.swse, g.sesw),
+            w_: self.join(g.nwsw, Rc::clone(&g.nwse), g.swnw, Rc::clone(&g.swne)),
+            c_: self.join(g.nwse, g.nesw, g.swne, g.senw),
+        }
+    }
+
+    fn join_nonants(&mut self, nodes: Nonants) -> Rc<Node> {
+        let nw_res = self.join(
+            Rc::clone(&nodes.nw.get_children().se),
+            Rc::clone(&nodes.n_.get_children().sw),
+            Rc::clone(&nodes.w_.get_children().ne),
+            Rc::clone(&nodes.c_.get_children().nw)
+        );
+        let ne_res = self.join(
+            Rc::clone(&nodes.n_.get_children().se),
+            Rc::clone(&nodes.ne.get_children().sw),
+            Rc::clone(&nodes.c_.get_children().ne),
+            Rc::clone(&nodes.e_.get_children().nw)
+        );
+        let sw_res = self.join(
+            Rc::clone(&nodes.w_.get_children().se),
+            Rc::clone(&nodes.c_.get_children().sw),
+            Rc::clone(&nodes.sw.get_children().ne),
+            Rc::clone(&nodes.s_.get_children().nw)
+        );
+        let se_res = self.join(
+            Rc::clone(&nodes.c_.get_children().se),
+            Rc::clone(&nodes.e_.get_children().sw),
+            Rc::clone(&nodes.s_.get_children().ne),
+            Rc::clone(&nodes.se.get_children().nw),
+        );
+        self.join(nw_res, ne_res, sw_res, se_res)
+    }
+
+    /// Invarient: Node.level >= 2
     fn step(&mut self, node: Rc<Node>) -> Rc<Node> {
         if let Some(ref_to_node) = self.cache.step.get(&node) {
             return Rc::clone(ref_to_node);
@@ -198,58 +302,94 @@ impl Hashlife {
                 self.join(nw, ne, sw, se)
             },
             _ => {
-                let c = node.get_children();
-                let g = node.get_grand_children();
 
-                let nw = Rc::clone(&c.nw);
-                let ne = Rc::clone(&c.ne);
-                let sw = Rc::clone(&c.sw);
-                let se = Rc::clone(&c.se);
-                let n_ = self.join(g.nwne, g.nenw, Rc::clone(&g.nwse), Rc::clone(&g.nesw));
-                let e_ = self.join(Rc::clone(&g.nesw), g.nese, Rc::clone(&g.senw), g.sene);
-                let s_ = self.join(Rc::clone(&g.swne), Rc::clone(&g.senw), g.swse, g.sesw);
-                let w_ = self.join(g.nwsw, Rc::clone(&g.nwse), g.swnw, Rc::clone(&g.swne));
-                let c_ = self.join(g.nwse, g.nesw, g.swne, g.senw);
+                let mut g9x9 = self.into_nonants(Rc::clone(&node));
 
-                let nw_step = self.step(nw);
-                let ne_step = self.step(ne);
-                let sw_step = self.step(sw);
-                let se_step = self.step(se);
-                let n_step = self.step(n_);
-                let e_step = self.step(e_);
-                let s_step = self.step(s_);
-                let w_step = self.step(w_);
-                let c_step = self.step(c_);
+                g9x9.nw = self.step(g9x9.nw);
+                g9x9.ne = self.step(g9x9.ne);
+                g9x9.sw = self.step(g9x9.sw);
+                g9x9.se = self.step(g9x9.se);
+                g9x9.n_ = self.step(g9x9.n_);
+                g9x9.e_ = self.step(g9x9.e_);
+                g9x9.s_ = self.step(g9x9.s_);
+                g9x9.w_ = self.step(g9x9.w_);
+                g9x9.c_ = self.step(g9x9.c_);
 
-                let nw_res = self.join(
-                    Rc::clone(&nw_step.get_children().se),
-                    Rc::clone(&n_step.get_children().sw),
-                    Rc::clone(&w_step.get_children().ne),
-                    Rc::clone(&c_step.get_children().nw)
-                );
-                let ne_res = self.join(
-                    Rc::clone(&n_step.get_children().se),
-                    Rc::clone(&ne_step.get_children().sw),
-                    Rc::clone(&c_step.get_children().ne),
-                    Rc::clone(&e_step.get_children().nw)
-                );
-                let sw_res = self.join(
-                    Rc::clone(&w_step.get_children().se),
-                    Rc::clone(&c_step.get_children().sw),
-                    Rc::clone(&sw_step.get_children().ne),
-                    Rc::clone(&s_step.get_children().nw)
-                );
-                let se_res = self.join(
-                    Rc::clone(&c_step.get_children().se),
-                    Rc::clone(&e_step.get_children().sw),
-                    Rc::clone(&s_step.get_children().ne),
-                    Rc::clone(&se_step.get_children().nw),
-                );
-                self.join(nw_res, ne_res, sw_res, se_res)
+                self.join_nonants(g9x9)
             },
         };
         self.cache.step.insert(node, Rc::clone(&step));
         step
+    }
+
+    fn expand_empty_boarder(&mut self, node: Rc<Node>) -> Rc<Node> {
+
+        let debug = |n: &Rc<Node>| {
+            let v = n.as_array().into_iter().map(|arr| arr.into_iter().map(|a| a as usize).collect::<Vec<usize>>()).collect::<Vec<Vec<usize>>>();
+            for row in v.iter() {
+                println!("{:?}", row);
+            }
+        };
+
+        let c = node.get_children();
+        let e = self.empty(node.level-1);
+        let e = || Rc::clone(&e);
+        let nw = self.join(e(), e(), e(), Rc::clone(&c.nw));
+        let ne = self.join(e(), e(), Rc::clone(&c.ne), e());
+        let sw = self.join(e(), Rc::clone(&c.sw), e(), e());
+        let se = self.join(Rc::clone(&c.se), e(), e(), e());
+        println!("nw:");debug(&nw);
+        println!("ne:");debug(&ne);
+        println!("sw:");debug(&sw);
+        println!("se:");debug(&se);
+        self.join(nw, ne, sw, se)
+    }
+
+    fn next_generation(&mut self) {
+        let top = if let Some(top) = &self.top {
+            Rc::clone(top)
+        } else {
+            return;
+        };
+        self.previous = Some(Rc::clone(&top));
+        let next = match self.edge {
+            Edge::Infinite => {
+                // Expand
+                // given top level is n
+                // expanded level is n + 1
+                let expanded = self.expand_empty_boarder(Rc::clone(&top));
+                // expanded level is n + 2
+                let expanded = self.expand_empty_boarder(Rc::clone(&expanded));
+                // step level is n + 1
+                let step = self.step(expanded);
+                // Check if there is population in the border
+                let g = step.get_grand_children();
+                let boarder_population = step.population - g.nwse.population - g.nesw.population - g.swne.population - g.senw.population;
+                if boarder_population == 0 {
+                    // result level is n
+                    self.join(g.nwse, g.nesw, g.swne, g.senw)
+                } else {
+                    // result level is n + 1
+                    step
+                }
+            },
+            Edge::Torus => {
+                let c = top.get_children();
+                let nw = Rc::clone(&c.nw);
+                let ne = Rc::clone(&c.ne);
+                let sw = Rc::clone(&c.sw);
+                let se = Rc::clone(&c.se);
+                let inverted = self.join(se, sw, ne, nw);
+                let inverted = || Rc::clone(&inverted);
+                let expanded = self.join(inverted(), inverted(), inverted(), inverted());
+                self.step(expanded)
+            },
+            Edge::Truncate => {
+                let expanded = self.expand_empty_boarder(Rc::clone(&top));
+                self.step(expanded)
+            },
+        };
+        self.top = Some(next);
     }
 
     fn make_automata(&mut self, a: Automata) -> Rc<Node> {
@@ -290,7 +430,7 @@ impl Hashlife {
     }
 
     /// Construct a Hashlife program given an array of states.
-    pub fn from_array(size: usize, array: Vec<u8>, width: usize, height: usize) -> Self {
+    pub fn from_array(array: Vec<u8>, width: usize, height: usize, edge: Edge) -> Self {
         assert_eq!(array.len(), width * height);
         //
         let mut hashlife = Hashlife::new();
@@ -302,6 +442,10 @@ impl Hashlife {
         let bottom = -(height as isize / 2);
         let top = height as isize + bottom - 1;
         let bound = BoundingBox::from(top, bottom, left, right);
+
+        let larger_length = *[width, height].iter().max().unwrap_or(&width) as f64;
+        let size = larger_length.log2().ceil() as usize;
+
         // assert_eq!(bound.width(), width);
         // assert_eq!(bound.height(), height);
         // Pack some configuration parameters to build the first generation.
@@ -315,12 +459,11 @@ impl Hashlife {
 
 
 
-        let nw = hashlife.construct(-1, 0, size, &params);
-        let ne= hashlife.construct(0, 0, size, &params);
-        let sw= hashlife.construct(-1, -1, size, &params);
-        let se= hashlife.construct(0, -1, size, &params);
+        let nw = hashlife.construct(-1, 0, size - 1, &params);
+        let ne= hashlife.construct(0, 0, size - 1, &params);
+        let sw= hashlife.construct(-1, -1, size - 1, &params);
+        let se= hashlife.construct(0, -1, size - 1, &params);
         let top = hashlife.join(nw, ne, sw, se);
-        // let top = hashlife.construct(-1, -1, size, &params);
 
         let v = top.as_array().into_iter().map(|arr| arr.into_iter().map(|a| a as usize).collect::<Vec<usize>>()).collect::<Vec<Vec<usize>>>();
         for row in v.iter() {
@@ -460,6 +603,26 @@ impl Hashlife {
             }
         }
     }
+
+    fn levels(&self) -> usize {
+        if let Some(top) = &self.top {
+            top.level
+        } else {
+            0
+        }
+    }
+
+
+    /// Draw automata that differes from the previous generation in the given array
+    fn draw_diff_to_viewport_array(&mut self, buffer: &mut [u8], width: usize, height: usize) {}
+
+    fn as_vector(&self) -> Vec<Automata> {
+        if let Some(top) = &self.top {
+            top.as_array().into_iter().flatten().collect()
+        } else {
+            vec![]
+        }
+    }
 }
 
 
@@ -591,10 +754,30 @@ fn calculate_hash(children: &Children) -> u64 {
 }
 
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn get3() {
+        let cell_width = 3;
+        let cell_height = 3;
+        let cells = vec![
+            1,1,1,
+            1,0,1,
+            1,1,1,
+        ];
+        let hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
+        assert_eq!(hashlife.levels(), 2);
+        // TODO: Work out what happens with odd numbers
+        for x in -2..2 {
+            for y in -2..2 {
+                if x == 0 && y == -1 { continue; }
+                assert_eq!(hashlife.get(x, y), Some(Automata::Alive));
+            }
+        }
+        assert_eq!(hashlife.get(0, -1), Some(Automata::Dead));
+    }
 
     #[test]
     fn get4() {
@@ -606,7 +789,8 @@ mod tests {
             1,1,1,1,
             1,1,1,1,
         ];
-        let hashlife = Hashlife::from_array(2, cells, cell_width, cell_height);
+        let hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
+        assert_eq!(hashlife.levels(), 2);
         for x in -2..2 {
             for y in -2..2 {
                 if x == 0 && y == -1 { continue; }
@@ -631,7 +815,8 @@ mod tests {
             1,0,1,1, 1,1,1,1,
             1,1,1,1, 1,1,1,1,
         ];
-        let hashlife = Hashlife::from_array(3, cells, cell_width, cell_height);
+        let hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
+        assert_eq!(hashlife.levels(), 3);
         println!("here");
         // Path is meant to be (0,-1) -> (1,-2) -> (2,-4)
         let res = hashlife.get(2, -4);
@@ -660,7 +845,8 @@ mod tests {
             0,0,1,0,
             0,1,0,1
         ];
-        let mut hashlife = Hashlife::from_array(3, cells, cell_width, cell_height);
+        let mut hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
+        assert_eq!(hashlife.levels(), 3);
 
         // two left most columns
         for x in -4..-2 {
@@ -736,5 +922,118 @@ mod tests {
         assert_eq!(b.right, 1);
         assert_eq!(b.bottom, 0);
         assert_eq!(b.top, 1);
+    }
+
+    #[test]
+    fn levels_eq_1() {
+        let cell_width = 1;
+        let cell_height = 1;
+        let cells = vec![ 1 ];
+        let hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
+        assert_eq!(hashlife.levels(), 1);
+    }
+
+    #[test]
+    fn levels_eq_2() {
+        let cell_width = 2;
+        let cell_height = 2;
+        let cells = vec![ 1, 0, 1, 0 ];
+        let hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
+        assert_eq!(hashlife.levels(), 2);
+    }
+
+    #[test]
+    fn cell3x2() {
+        let cell_width = 3;
+        let cell_height = 2;
+        let cells = vec![ 1, 0, 1, 0, 0, 1 ];
+        let hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
+        assert_eq!(hashlife.levels(), 3);
+    }
+
+    #[test]
+    /// Get the full universe as an array.
+    /// Warning: This operation is rather slow.
+    fn as_array_trunc_next_gen() {
+        let cell_width = 4;
+        let cell_height = 4;
+        let cells = vec![
+            0,0,0,0,
+            0,1,1,1,
+            0,0,0,0,
+            0,0,0,0,
+        ];
+        let cells_next = vec![
+            0,0,1,0,
+            0,0,1,0,
+            0,0,1,0,
+            0,0,0,0,
+        ];
+        let mut hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
+        hashlife.next_generation();
+        let result = hashlife.as_vector().into_iter().map(|a| a as u8).collect::<Vec<u8>>();
+        assert_eq!(cells_next, result);
+    }
+
+    #[test]
+    fn draw_to_viewport_array() {
+        let cell_width = 4;
+        let cell_height = 6;
+        let cells = vec![
+            0,0,0,0,
+            0,1,1,1,
+            0,0,0,0,
+            0,0,0,0,
+            0,0,1,1,
+            0,0,1,1
+        ];
+        let cells_next_expected = vec![
+            0,0,1,0,
+            0,0,0,0,
+            0,0,1,0,
+            0,0,0,0,
+            0,0,0,0,
+            0,0,0,0,
+        ];
+
+        let mut buffer = vec![
+            0,0,0,0,
+            0,0,0,0,
+            0,0,0,0,
+            0,0,0,0,
+            0,0,0,0,
+            0,0,0,0,
+        ];
+        let mut hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
+        hashlife.next_generation();
+        hashlife.draw_diff_to_viewport_array(&mut buffer, cell_width, cell_height);
+        let result = hashlife.as_vector().into_iter().map(|a| a as u8).collect::<Vec<u8>>();
+        assert_eq!(cells_next_expected, result);
+    }
+
+
+    #[test]
+    fn empty_boarder() {
+        let cell_width = 2;
+        let cell_height = 2;
+        let cells = vec![
+            0,0,
+            1,1,
+        ];
+        let cells_next = vec![
+            0,0,0,0,
+            0,0,0,0,
+            0,1,1,0,
+            0,0,0,0,
+        ];
+        let mut hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
+        let expanded = hashlife.expand_empty_boarder(Rc::clone(hashlife.top.as_ref().unwrap()));
+        hashlife.top = Some(expanded);
+        for x in -2..2 {
+            for y in -2..2 {
+                let idx = cell_width * (y + 2) as usize + (x + 2) as usize;
+                assert_eq!(cells_next[idx], hashlife.get(x, y).unwrap() as usize);
+            }
+        }
     }
 }
