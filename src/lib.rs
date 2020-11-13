@@ -186,11 +186,19 @@ impl BoundingBox {
     }
 
     fn width(&self) -> usize {
-        (self.right - self.left + 1).abs() as usize
+        (self.right - self.left + 1) as usize
     }
 
     fn height(&self) -> usize {
-        (self.bottom - self.top + 1).abs() as usize
+        (self.top - self.bottom + 1) as usize
+    }
+
+    fn index(&self, x: isize, y: isize) -> usize {
+        let width = (self.right - self.left) as usize + 1;
+        let idx_height = (self.top - self.bottom) as usize;
+        let x_adjusted = (x - self.left) as usize;
+        let y_adjusted = (y - self.bottom) as usize;
+        width * (idx_height - y_adjusted) + x_adjusted
     }
 
 }
@@ -322,7 +330,7 @@ impl Hashlife {
         step
     }
 
-    fn expand_empty_boarder(&mut self, node: Rc<Node>) -> Rc<Node> {
+    fn expand_empty_border(&mut self, node: Rc<Node>) -> Rc<Node> {
 
         let debug = |n: &Rc<Node>| {
             let v = n.as_array().into_iter().map(|arr| arr.into_iter().map(|a| a as usize).collect::<Vec<usize>>()).collect::<Vec<Vec<usize>>>();
@@ -357,9 +365,9 @@ impl Hashlife {
                 // Expand
                 // given top level is n
                 // expanded level is n + 1
-                let expanded = self.expand_empty_boarder(Rc::clone(&top));
+                let expanded = self.expand_empty_border(Rc::clone(&top));
                 // expanded level is n + 2
-                let expanded = self.expand_empty_boarder(Rc::clone(&expanded));
+                let expanded = self.expand_empty_border(Rc::clone(&expanded));
                 // step level is n + 1
                 let step = self.step(expanded);
                 // Check if there is population in the border
@@ -385,7 +393,7 @@ impl Hashlife {
                 self.step(expanded)
             },
             Edge::Truncate => {
-                let expanded = self.expand_empty_boarder(Rc::clone(&top));
+                let expanded = self.expand_empty_border(Rc::clone(&top));
                 self.step(expanded)
             },
         };
@@ -457,19 +465,11 @@ impl Hashlife {
             bound,
         };
 
-
-
         let nw = hashlife.construct(-1, 0, size - 1, &params);
         let ne= hashlife.construct(0, 0, size - 1, &params);
         let sw= hashlife.construct(-1, -1, size - 1, &params);
         let se= hashlife.construct(0, -1, size - 1, &params);
         let top = hashlife.join(nw, ne, sw, se);
-
-        let v = top.as_array().into_iter().map(|arr| arr.into_iter().map(|a| a as usize).collect::<Vec<usize>>()).collect::<Vec<Vec<usize>>>();
-        for row in v.iter() {
-            println!("{:?}", row);
-        }
-        // println!("Array: {:?}", v);
 
         hashlife.top = Some(top);
         hashlife
@@ -484,7 +484,7 @@ impl Hashlife {
                 return self.empty(0);
             }
             let xidx = (x - params.bound.left) as usize;
-            let yidx = (y - params.bound.bottom) as usize;
+            let yidx = params.height - 1 - (y - params.bound.bottom) as usize;
             let idx = params.width * yidx + xidx;
             let v = params.vector[idx];
             let a = Automata::from(v as usize);
@@ -604,7 +604,9 @@ impl Hashlife {
         }
     }
 
-    fn levels(&self) -> usize {
+    /// Returns the maximum node level in the tree. Setting n to the result,
+    /// the number of levels is n + 1.
+    fn max_level(&self) -> usize {
         if let Some(top) = &self.top {
             top.level
         } else {
@@ -768,7 +770,7 @@ mod tests {
             1,1,1,
         ];
         let hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
-        assert_eq!(hashlife.levels(), 2);
+        assert_eq!(hashlife.max_level(), 2);
         // TODO: Work out what happens with odd numbers
         for x in -2..2 {
             for y in -2..2 {
@@ -790,7 +792,7 @@ mod tests {
             1,1,1,1,
         ];
         let hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
-        assert_eq!(hashlife.levels(), 2);
+        assert_eq!(hashlife.max_level(), 2);
         for x in -2..2 {
             for y in -2..2 {
                 if x == 0 && y == -1 { continue; }
@@ -816,7 +818,7 @@ mod tests {
             1,1,1,1, 1,1,1,1,
         ];
         let hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
-        assert_eq!(hashlife.levels(), 3);
+        assert_eq!(hashlife.max_level(), 3);
         println!("here");
         // Path is meant to be (0,-1) -> (1,-2) -> (2,-4)
         let res = hashlife.get(2, -4);
@@ -846,7 +848,7 @@ mod tests {
             0,1,0,1
         ];
         let mut hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
-        assert_eq!(hashlife.levels(), 3);
+        assert_eq!(hashlife.max_level(), 3);
 
         // two left most columns
         for x in -4..-2 {
@@ -870,35 +872,35 @@ mod tests {
         }
 
         // row 1
-        assert_eq!(hashlife.get(-2,-3), Some(Automata::Alive));
-        assert_eq!(hashlife.get(-1,-3), Some(Automata::Dead));
-        assert_eq!(hashlife.get( 0,-3), Some(Automata::Dead));
-        assert_eq!(hashlife.get( 1,-3), Some(Automata::Alive));
-        // row 2
-        assert_eq!(hashlife.get(-2,-2), Some(Automata::Alive));
-        assert_eq!(hashlife.get(-1,-2), Some(Automata::Alive));
-        assert_eq!(hashlife.get( 0,-2), Some(Automata::Dead));
-        assert_eq!(hashlife.get( 1,-2), Some(Automata::Alive));
-        // row 3
-        assert_eq!(hashlife.get(-2,-1), Some(Automata::Alive));
-        assert_eq!(hashlife.get(-1,-1), Some(Automata::Dead));
-        assert_eq!(hashlife.get( 0,-1), Some(Automata::Alive));
-        assert_eq!(hashlife.get( 1,-1), Some(Automata::Alive));
-        // row 4
-        assert_eq!(hashlife.get(-2, 0), Some(Automata::Alive));
-        assert_eq!(hashlife.get(-1, 0), Some(Automata::Dead));
-        assert_eq!(hashlife.get( 0, 0), Some(Automata::Dead));
-        assert_eq!(hashlife.get( 1, 0), Some(Automata::Alive));
-        // row 5
-        assert_eq!(hashlife.get(-2, 1), Some(Automata::Dead));
-        assert_eq!(hashlife.get(-1, 1), Some(Automata::Dead));
-        assert_eq!(hashlife.get( 0, 1), Some(Automata::Alive));
-        assert_eq!(hashlife.get( 1, 1), Some(Automata::Dead));
-        // row 6
-        assert_eq!(hashlife.get(-2, 2), Some(Automata::Dead));
-        assert_eq!(hashlife.get(-1, 2), Some(Automata::Alive));
+        assert_eq!(hashlife.get(-2, 2), Some(Automata::Alive));
+        assert_eq!(hashlife.get(-1, 2), Some(Automata::Dead));
         assert_eq!(hashlife.get( 0, 2), Some(Automata::Dead));
         assert_eq!(hashlife.get( 1, 2), Some(Automata::Alive));
+        // row 2
+        assert_eq!(hashlife.get(-2, 1), Some(Automata::Alive));
+        assert_eq!(hashlife.get(-1, 1), Some(Automata::Alive));
+        assert_eq!(hashlife.get( 0, 1), Some(Automata::Dead));
+        assert_eq!(hashlife.get( 1, 1), Some(Automata::Alive));
+        // row 3
+        assert_eq!(hashlife.get(-2, 0), Some(Automata::Alive));
+        assert_eq!(hashlife.get(-1, 0), Some(Automata::Dead));
+        assert_eq!(hashlife.get( 0, 0), Some(Automata::Alive));
+        assert_eq!(hashlife.get( 1, 0), Some(Automata::Alive));
+        // row 4
+        assert_eq!(hashlife.get(-2,-1), Some(Automata::Alive));
+        assert_eq!(hashlife.get(-1,-1), Some(Automata::Dead));
+        assert_eq!(hashlife.get( 0,-1), Some(Automata::Dead));
+        assert_eq!(hashlife.get( 1,-1), Some(Automata::Alive));
+        // row 5
+        assert_eq!(hashlife.get(-2,-2), Some(Automata::Dead));
+        assert_eq!(hashlife.get(-1,-2), Some(Automata::Dead));
+        assert_eq!(hashlife.get( 0,-2), Some(Automata::Alive));
+        assert_eq!(hashlife.get( 1,-2), Some(Automata::Dead));
+        // row 6
+        assert_eq!(hashlife.get(-2,-3), Some(Automata::Dead));
+        assert_eq!(hashlife.get(-1,-3), Some(Automata::Alive));
+        assert_eq!(hashlife.get( 0,-3), Some(Automata::Dead));
+        assert_eq!(hashlife.get( 1,-3), Some(Automata::Alive));
     }
 
     #[test]
@@ -925,21 +927,21 @@ mod tests {
     }
 
     #[test]
-    fn levels_eq_1() {
+    fn max_level_eq_1() {
         let cell_width = 1;
         let cell_height = 1;
         let cells = vec![ 1 ];
         let hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
-        assert_eq!(hashlife.levels(), 1);
+        assert_eq!(hashlife.max_level(), 1);
     }
 
     #[test]
-    fn levels_eq_2() {
+    fn max_level_eq_2() {
         let cell_width = 2;
         let cell_height = 2;
         let cells = vec![ 1, 0, 1, 0 ];
         let hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
-        assert_eq!(hashlife.levels(), 2);
+        assert_eq!(hashlife.max_level(), 2);
     }
 
     #[test]
@@ -948,7 +950,7 @@ mod tests {
         let cell_height = 2;
         let cells = vec![ 1, 0, 1, 0, 0, 1 ];
         let hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
-        assert_eq!(hashlife.levels(), 3);
+        assert_eq!(hashlife.max_level(), 2);
     }
 
     #[test]
@@ -1013,7 +1015,7 @@ mod tests {
 
 
     #[test]
-    fn empty_boarder() {
+    fn empty_border() {
         let cell_width = 2;
         let cell_height = 2;
         let cells = vec![
@@ -1027,12 +1029,22 @@ mod tests {
             0,0,0,0,
         ];
         let mut hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
-        let expanded = hashlife.expand_empty_boarder(Rc::clone(hashlife.top.as_ref().unwrap()));
+        let expanded = hashlife.expand_empty_border(Rc::clone(hashlife.top.as_ref().unwrap()));
+        let viewport = BoundingBox::from(1, -2, -2, 1);
         hashlife.top = Some(expanded);
         for x in -2..2 {
             for y in -2..2 {
-                let idx = cell_width * (y + 2) as usize + (x + 2) as usize;
-                assert_eq!(cells_next[idx], hashlife.get(x, y).unwrap() as usize);
+                let idx = viewport.index(x, y);
+                let expected = cells_next[idx] as usize;
+                let result = hashlife.get(x, y).unwrap() as usize;
+                assert_eq!(expected, result,
+                    "got {result} when expecting {expected} at abs({x},{y}) [index={idx}]",
+                    expected=expected,
+                    result=result,
+                    x=x,
+                    y=y,
+                    idx=idx
+                );
             }
         }
     }
