@@ -1,6 +1,6 @@
 mod automata;
 
-use automata::Automata;
+pub use automata::Automata;
 
 use std::rc::Rc;
 use std::collections::HashMap;
@@ -120,6 +120,7 @@ pub struct Hashlife {
     edge: Edge,
     top: Option<Rc<Node>>,
     previous: Option<Rc<Node>>,
+    gen: usize,
 }
 
 struct Cache {
@@ -148,7 +149,8 @@ struct ConstructionParameters<'a> {
     bound: BoundingBox,
 }
 
-struct BoundingBox {
+
+pub struct BoundingBox {
     top: isize,
     bottom: isize,
     left: isize,
@@ -170,7 +172,7 @@ impl BoundingBox {
         Self { top, bottom, left, right }
     }
 
-    fn from(top: isize, bottom: isize, left: isize, right: isize) -> Self {
+    pub fn from(top: isize, bottom: isize, left: isize, right: isize) -> Self {
         Self { top, bottom, left, right }
     }
 
@@ -209,7 +211,8 @@ impl Hashlife {
             cache: Cache::new(),
             edge: Edge::Infinite,
             top: None,
-            previous: None
+            previous: None,
+            gen: 0,
         }
     }
 
@@ -353,7 +356,7 @@ impl Hashlife {
         self.join(nw, ne, sw, se)
     }
 
-    fn next_generation(&mut self) {
+    pub fn next_generation(&mut self) {
         let top = if let Some(top) = &self.top {
             Rc::clone(top)
         } else {
@@ -398,6 +401,7 @@ impl Hashlife {
             },
         };
         self.top = Some(next);
+        self.gen += 1;
     }
 
     fn make_automata(&mut self, a: Automata) -> Rc<Node> {
@@ -622,7 +626,7 @@ impl Hashlife {
 
 
     /// Draw automata that differes from the previous generation in the given array.
-    fn draw_diff_to_viewport_array(&mut self, buffer: &mut [u8], viewport: BoundingBox) {
+    pub fn draw_diff_to_viewport_array(&mut self, buffer: &mut [u8], viewport: BoundingBox) {
         // case where the cell only contains 1 level.
         if self.max_level() == 0 {
             if let Some(top) = self.top.as_ref() {
@@ -692,7 +696,7 @@ impl Hashlife {
         }
     }
 
-    fn draw_to_viewport_buffer(&mut self, buffer: &mut [u8], viewport: BoundingBox) {
+    pub fn draw_to_viewport_buffer(&mut self, buffer: &mut [u8], viewport: BoundingBox) {
         if self.max_level() == 0 {
             if let Some(top) = self.top.as_ref() {
                 buffer[0] = top.population as u8;
@@ -738,6 +742,10 @@ impl Hashlife {
         } else {
             vec![]
         }
+    }
+
+    pub fn get_generation(&self) -> usize {
+        self.gen
     }
 }
 
