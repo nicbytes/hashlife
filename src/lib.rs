@@ -438,8 +438,8 @@ impl Hashlife {
     }
 
     /// Construct a Hashlife program given an array of states.
-    pub fn from_array(array: Vec<u8>, width: usize, height: usize, edge: Edge) -> Self {
-        assert_eq!(array.len(), width * height);
+    pub fn from_array(buffer: Vec<u8>, width: usize, height: usize, edge: Edge) -> Self {
+        assert_eq!(buffer.len(), width * height);
         //
         let mut hashlife = Hashlife::new();
 
@@ -456,10 +456,16 @@ impl Hashlife {
 
         // assert_eq!(bound.width(), width);
         // assert_eq!(bound.height(), height);
+
+        if size == 0 {
+            hashlife.top = Some(hashlife.make_automata(Automata::from(buffer[0] as usize)));
+            return hashlife;
+        }
+
         // Pack some configuration parameters to build the first generation.
         let params = ConstructionParameters {
             level: size,
-            vector: &array,
+            vector: &buffer,
             width,
             height,
             bound,
@@ -771,14 +777,18 @@ mod tests {
         ];
         let hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
         assert_eq!(hashlife.max_level(), 2);
-        // TODO: Work out what happens with odd numbers
+        // Odd numbered widths and heights are shifted one to the right or up.
         for x in -2..2 {
             for y in -2..2 {
-                if x == 0 && y == -1 { continue; }
-                assert_eq!(hashlife.get(x, y), Some(Automata::Alive));
+                if x == 0 && y == 0 { continue; }
+                if !(x==-2 || y==-2) {
+                    assert_eq!(hashlife.get(x, y), Some(Automata::Alive));
+                } else {
+                    assert_eq!(hashlife.get(x, y), Some(Automata::Dead));
+                }
             }
         }
-        assert_eq!(hashlife.get(0, -1), Some(Automata::Dead));
+        assert_eq!(hashlife.get(0, 0), Some(Automata::Dead));
     }
 
     #[test]
@@ -795,11 +805,11 @@ mod tests {
         assert_eq!(hashlife.max_level(), 2);
         for x in -2..2 {
             for y in -2..2 {
-                if x == 0 && y == -1 { continue; }
+                if x == 0 && y == 0 { continue; }
                 assert_eq!(hashlife.get(x, y), Some(Automata::Alive));
             }
         }
-        assert_eq!(hashlife.get(0, -1), Some(Automata::Dead));
+        assert_eq!(hashlife.get(0, 0), Some(Automata::Dead));
     }
 
     #[test]
@@ -820,16 +830,14 @@ mod tests {
         let hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
         assert_eq!(hashlife.max_level(), 3);
         println!("here");
-        // Path is meant to be (0,-1) -> (1,-2) -> (2,-4)
-        let res = hashlife.get(2, -4);
-        assert_eq!(res, Some(Automata::Dead));
-        assert_eq!(hashlife.get(-2, -1), Some(Automata::Dead));
-        assert_eq!(hashlife.get(-3, 2), Some(Automata::Dead));
+        assert_eq!(hashlife.get(2, 3), Some(Automata::Dead));
+        assert_eq!(hashlife.get(-2, 0), Some(Automata::Dead));
+        assert_eq!(hashlife.get(-3, -3), Some(Automata::Dead));
         for x in -4..4 {
             for y in -4..4 {
-                if x == 2 && y == -4 { continue; }
-                if x == -2 && y == -1 { continue; }
-                if x == -3 && y == 2 { continue; }
+                if x == 2 && y == 3 { continue; }
+                if x == -2 && y == 0 { continue; }
+                if x == -3 && y == -3 { continue; }
                 assert_eq!(hashlife.get(x, y), Some(Automata::Alive));
             }
         }
@@ -927,21 +935,21 @@ mod tests {
     }
 
     #[test]
-    fn max_level_eq_1() {
+    fn max_level_eq_0() {
         let cell_width = 1;
         let cell_height = 1;
         let cells = vec![ 1 ];
         let hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
-        assert_eq!(hashlife.max_level(), 1);
+        assert_eq!(hashlife.max_level(), 0);
     }
 
     #[test]
-    fn max_level_eq_2() {
+    fn max_level_eq_1() {
         let cell_width = 2;
         let cell_height = 2;
         let cells = vec![ 1, 0, 1, 0 ];
         let hashlife = Hashlife::from_array(cells, cell_width, cell_height, Edge::Truncate);
-        assert_eq!(hashlife.max_level(), 2);
+        assert_eq!(hashlife.max_level(), 1);
     }
 
     #[test]
