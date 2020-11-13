@@ -9,11 +9,8 @@ use tui::widgets::{Block, Borders, Clear};
 use termion::raw::IntoRawMode;
 use termion::event::Key;
 use argh::FromArgs;
-use getrandom::getrandom;
-use itertools::Itertools;
 
 use hashlife::{Hashlife, Edge, BoundingBox};
-use hashlife::Automata;
 
 const BLOCK_HALF_UPPER: &'static str = "▀";
 const BLOCK_HALF_LOWER: &'static str = "▄";
@@ -62,9 +59,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 let height = (viewport_height * 2) as usize;
                 let edge_rules = Edge::Torus;
                 buffer = vec![ 0u8; width * height];
-                let mut rbuffer = vec![ 0u8; width * height];
-                getrandom(&mut rbuffer);
-                let rbuffer = rbuffer.iter().map(|v| if v%2==0{0}else{1}).collect();
+                let rbuffer = hashlife::rle_loader::load_spaceships(width as u32, height as u32).into_iter().map(|a| a as u8).collect();
                 let hashlife = Hashlife::from_array(rbuffer, width, height, edge_rules);
                 gol = Some(hashlife);
             }
@@ -80,16 +75,17 @@ fn main() -> Result<(), Box<dyn Error>> {
             f.render_widget(Clear, window_size);
             f.render_widget(container, window_size);
 
-            let right = (viewport_width / 2) as isize;
-            let left = viewport_width as isize - right;
-            let top = (viewport_height / 2) as isize;
-            let bottom = viewport_height as isize - top;
+            let left = -(viewport_width as isize / 2);
+            let right = viewport_width as isize + left - 1;
+            let bottom = -(viewport_height as isize);
+            let top = viewport_height as isize * 2 + bottom - 1;
             let bound = BoundingBox::from(top, bottom, left, right);
             if gol.get_generation() == 0 {
                 gol.draw_to_viewport_buffer(&mut buffer, bound);
             } else {
                 gol.draw_diff_to_viewport_array(&mut buffer, bound);
             }
+
             (0..viewport_height).map(|i| {
                 let start = (2 * i * viewport_width) as usize;
                 let middle = ((2 * i + 1) * viewport_width) as usize;

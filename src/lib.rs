@@ -1,4 +1,5 @@
 mod automata;
+pub mod rle_loader;
 
 pub use automata::Automata;
 
@@ -149,7 +150,7 @@ struct ConstructionParameters<'a> {
     bound: BoundingBox,
 }
 
-
+#[derive(Debug)]
 pub struct BoundingBox {
     top: isize,
     bottom: isize,
@@ -434,6 +435,8 @@ impl Hashlife {
         assert_eq!(buffer.len(), width * height);
         //
         let mut hashlife = Hashlife::new();
+
+        hashlife.edge = edge;
 
         // center on x-axis and negative on left
         let left = -(width as isize / 2);
